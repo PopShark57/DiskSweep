@@ -26,6 +26,7 @@ struct DirectorySizer: Sendable {
         exclusions: [URL] = [],
         includeHiddenFiles: Bool = false,
         skipPackages: Bool = true,
+        excludedNames: Set<String> = FileSystemSafetyPolicy.excludedNames,
         batchSize: Int = 256,
         onProgress: DirectorySizeProgressHandler? = nil
     ) async throws -> DirectorySizeResult {
@@ -39,7 +40,8 @@ struct DirectorySizer: Sendable {
             skipCloudPlaceholders: true,
             collectItems: false,
             batchSize: batchSize,
-            exclusionURLs: exclusions
+            exclusionURLs: exclusions,
+            excludedNames: excludedNames
         )
 
         let result = try await scanner.scan(root: url, options: options) { batch in

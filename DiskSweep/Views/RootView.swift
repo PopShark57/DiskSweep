@@ -158,7 +158,7 @@ struct RootView: View {
         case .developerFiles:
             CleanupListView(
                 title: "Developer Files",
-                subtitle: "Xcode, simulator, Swift Package Manager, and Homebrew data with conservative defaults.",
+                subtitle: "Xcode, simulator, Swift Package Manager, Homebrew, and idle project build artifacts with conservative defaults.",
                 symbol: "hammer",
                 categories: model.categories.filter { $0.location.isDeveloperCategory },
                 selectedItemIDs: $model.selectedCleanupItemIDs,

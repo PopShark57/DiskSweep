@@ -27,6 +27,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 ### Cleanup discovery and analysis
 
 - Cleanup providers for explicit user-scoped roots: user and application caches, logs, current-user temporary files, Trash, browser caches, Downloads, Xcode DerivedData and archives, simulator caches, Xcode Device Support, Swift Package Manager caches, and Homebrew downloads.
+- Project build artifacts in idle projects, limited to project folders the user adds under **Settings > Developer**. See [Project build artifacts](#project-build-artifacts).
 - Log cleanup is limited to individual files that have remained unchanged for at least 30 days; active logs and whole log directories are never offered, and old logs still require review.
 - Large-file discovery with configurable thresholds.
 - Hierarchical large-folder and disk-usage analysis rooted at the user's home directory.
@@ -76,6 +77,22 @@ A scan never deletes anything. Cleanup candidates retain their provider identity
 5. Records exact scan-time device, inode, size, allocation, modification-time, change-time, and file-kind identity for every provider cleanup candidate—including Downloads analyzer results.
 6. Revalidates that identity, active exclusions, directory descendants, and volume boundaries immediately before mutation to reduce time-of-check/time-of-use risk.
 7. Uses native `FileManager` operations—never path-interpolated shell deletion commands.
+
+### Project build artifacts
+
+Developers often have gigabytes of rebuildable data spread across old projects. DiskSweep can find it, but only inside project folders you add under **Settings > Developer**. It never searches your whole home folder. Each project folder must be inside your home folder and outside protected locations such as Desktop, Documents, and Library. A folder that doesn't qualify is flagged in Settings and skipped.
+
+A folder counts as an artifact only when the tool that created it left a marker. A folder's name is never enough:
+
+| Artifact | Marker |
+| --- | --- |
+| Python virtual environment | A `pyvenv.cfg` file in the folder, which `python -m venv`, uv, and virtualenv all write |
+| Tagged build cache | A `CACHEDIR.TAG` file that starts with the [Cache Directory Tagging Specification](https://bford.info/cachedir/) signature. Cargo `target/` folders and pytest, mypy, and Ruff caches use this marker |
+| `node_modules` | A `package.json` file next to the folder |
+
+An artifact is offered only when its project has been unchanged for the configured idle period (90 days by default). DiskSweep treats the folder that contains the artifact as the project. Project activity is the newest modification time of any file under that folder. Files inside artifacts and Finder's `.DS_Store` files don't count. Git's `index`, `HEAD`, and `logs/HEAD` files do count, so recent commits and checkouts keep a project active. Each item shows how long its project has been idle and, when DiskSweep can tell from lock or manifest files, the command that rebuilds it, such as `uv sync`, `poetry install`, `npm install`, or `cargo build`.
+
+Project artifacts are never preselected. By default they move to the Trash, so you can recover a virtual environment that held packages installed by hand. Before each removal, the cleanup engine checks again that the folder still carries its marker. It also refuses any artifact that contains version-control metadata such as a `.git` folder. Nested `node_modules` folders are the only content allowed inside an artifact that DiskSweep's normal folder policy would otherwise refuse.
 
 Arbitrary user files, including Downloads and duplicate copies, are not selected automatically. The cleanup engine defaults user files to the system Trash. Emptying Trash and an explicitly requested permanent deletion remain irreversible operations and must be presented accordingly by the UI.
 
@@ -157,9 +174,11 @@ xcodebuild \
   test
 ```
 
-The unit-test sources cover allowlist containment and root shapes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, settings persistence, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
+The unit-test sources cover allowlist containment and root shapes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, project-artifact marker recognition, idle detection, and revalidation, settings persistence and migration, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
 
 ### Verification performed
+
+The project build-artifact feature and its tests were added after this verification run and still need to be built and tested in Xcode on a Mac.
 
 On August 17, 2026, the generated project was built with the macOS 15 deployment target using Swift 6 and the current Xcode toolchain. The full Xcode test run completed **61 tests with 0 failures**. The Debug application was then launched and visually inspected in dark appearance; navigation, settings, live scan progress, cancellation, partial results, and the final cleanup-review sheet were exercised without approving a filesystem mutation.
 
@@ -177,6 +196,7 @@ Review the generated project diff before committing it. For ordinary building, t
 ## Current limitations
 
 - Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped, and simulator cleanup is limited to cache directories rather than simulator app data.
+- Project folders inside protected locations, such as `~/Documents`, cannot be used for project build-artifact cleanup. Artifacts without a marker, such as Gradle `build/` folders or Python `dist/` folders, are not recognized. The project walk stops at a depth of 12 folders.
 - Full Disk Access detection is necessarily heuristic, and macOS permissions may still hide individual locations.
 - Large-scale performance on Macs containing millions of files has not yet been characterized.
 - Running-app visual QA covered the current host in dark appearance; a full light-mode, VoiceOver, keyboard-only, and automated visual-regression matrix remains future release work.

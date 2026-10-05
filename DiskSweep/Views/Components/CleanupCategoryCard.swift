@@ -136,6 +136,13 @@ struct CleanupCategoryCard: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let detail = item.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
             }
 
             Spacer()
@@ -146,6 +153,7 @@ struct CleanupCategoryCard: View {
         }
         .padding(.vertical, 8)
         .contentShape(Rectangle())
+        .help(item.explanation)
     }
 
     private func selectCategory(_ isSelected: Bool) {

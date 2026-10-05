@@ -16,6 +16,7 @@ enum SafetyValidationError: Error, LocalizedError, Sendable {
     case excludedContent(String)
     case volumeBoundary(String)
     case targetChanged(String)
+    case unrecognizedProjectArtifact(String)
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +48,8 @@ enum SafetyValidationError: Error, LocalizedError, Sendable {
             "The target crosses a filesystem boundary: \(path)"
         case let .targetChanged(path):
             "The target changed after validation and was not removed: \(path)"
+        case let .unrecognizedProjectArtifact(path):
+            "The folder no longer has the marker that identifies it as a rebuildable project artifact: \(path)"
         }
     }
 }
@@ -194,7 +197,8 @@ struct SafetyValidator: Sendable {
 
     func validateDirectoryContents(
         _ validated: ValidatedCleanupTarget,
-        exclusionRoots: [URL]
+        exclusionRoots: [URL],
+        permittedNestedNames: Set<String> = []
     ) throws {
         let normalizedExclusions = exclusionRoots.map {
             $0.standardizedFileURL.resolvingSymlinksInPath()
@@ -226,9 +230,11 @@ struct SafetyValidator: Sendable {
             let name = standardized.lastPathComponent.lowercased()
             let pathExtension = standardized.pathExtension.lowercased()
 
-            if FileSystemSafetyPolicy.excludedNames.contains(name)
+            let isExcludedByPolicy = !permittedNestedNames.contains(name)
+                && (FileSystemSafetyPolicy.excludedNames.contains(name)
+                    || FileSystemSafetyPolicy.excludes(standardized))
+            if isExcludedByPolicy
                 || FileSystemSafetyPolicy.excludedExtensions.contains(pathExtension)
-                || FileSystemSafetyPolicy.excludes(standardized)
                 || normalizedExclusions.contains(where: {
                     Self.isSameOrDescendant(standardized, of: $0)
                 }) {
@@ -359,6 +365,14 @@ struct SafetyValidator: Sendable {
                 isDirectory: true
             )
             return Self.isSameOrDescendant(root, of: standard)
+        case .projectArtifacts:
+            // Project folders are chosen by the user. Protected locations and the home folder
+            // itself are already refused by canonicalApprovedRoot; the Library and Trash are
+            // owned by other providers and are never project folders.
+            let trash = homeDirectory.appendingPathComponent(".Trash", isDirectory: true)
+            return Self.isSameOrDescendant(root, of: homeDirectory)
+                && !Self.isSameOrDescendantCaseInsensitive(root, of: library)
+                && !Self.isSameOrDescendantCaseInsensitive(root, of: trash)
         }
     }
 

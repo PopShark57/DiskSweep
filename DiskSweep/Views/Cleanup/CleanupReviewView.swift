@@ -28,7 +28,18 @@ struct CleanupReviewView: View {
 
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     private var includesUserFiles: Bool { items.contains { $0.risk == .userFiles } }
+    private var includesProjectArtifacts: Bool {
+        items.contains { $0.location == .projectArtifacts }
+    }
     private var includesTrash: Bool { items.contains { $0.location == .trash } }
+
+    private var dispositionTitle: String {
+        switch (includesUserFiles, includesProjectArtifacts) {
+        case (true, true): "User file and project artifact handling"
+        case (false, true): "Project artifact handling"
+        default: "User file handling"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -73,11 +84,11 @@ struct CleanupReviewView: View {
                         .cardSurface(padding: 14)
                     }
 
-                    if includesUserFiles {
+                    if includesUserFiles || includesProjectArtifacts {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("User file handling")
+                            Text(dispositionTitle)
                                 .font(.headline)
-                            Picker("User file handling", selection: $userFileDisposition) {
+                            Picker(dispositionTitle, selection: $userFileDisposition) {
                                 Label("Move to Trash", systemImage: "trash").tag(CleanupDisposition.trash)
                                 Label("Delete Permanently", systemImage: "trash.slash").tag(CleanupDisposition.permanent)
                             }
