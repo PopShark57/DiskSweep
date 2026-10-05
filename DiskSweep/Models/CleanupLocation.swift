@@ -13,6 +13,7 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     case xcodeDeviceSupport
     case swiftPackageCaches
     case homebrewCache
+    case projectArtifacts
     case downloads
 
     var id: String { rawValue }
@@ -31,6 +32,7 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .xcodeDeviceSupport: "Device Support"
         case .swiftPackageCaches: "Swift Package Caches"
         case .homebrewCache: "Homebrew Cache"
+        case .projectArtifacts: "Project Build Artifacts"
         case .downloads: "Downloads"
         }
     }
@@ -61,6 +63,8 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             "Downloaded package artifacts that Swift Package Manager can restore."
         case .homebrewCache:
             "Downloaded Homebrew bottles and source archives, never installed packages."
+        case .projectArtifacts:
+            "Virtual environments, dependency folders, and tagged build caches in idle projects inside folders you choose in Settings."
         case .downloads:
             "Files in Downloads. DiskSweep never selects these automatically."
         }
@@ -80,6 +84,7 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .xcodeDeviceSupport: "externaldrive.connected.to.line.below"
         case .swiftPackageCaches: "shippingbox.and.arrow.backward"
         case .homebrewCache: "mug"
+        case .projectArtifacts: "folder.badge.gearshape"
         case .downloads: "arrow.down.circle"
         }
     }
@@ -90,7 +95,7 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
              .xcodeDerivedData, .swiftPackageCaches, .homebrewCache:
             .safe
         case .temporaryFiles, .trash, .xcodeArchives, .xcodeSimulatorData,
-             .xcodeDeviceSupport:
+             .xcodeDeviceSupport, .projectArtifacts:
             .reviewRecommended
         case .downloads:
             .userFiles
@@ -100,7 +105,8 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     var isDeveloperCategory: Bool {
         switch self {
         case .xcodeDerivedData, .xcodeArchives, .xcodeSimulatorData,
-             .xcodeDeviceSupport, .swiftPackageCaches, .homebrewCache:
+             .xcodeDeviceSupport, .swiftPackageCaches, .homebrewCache,
+             .projectArtifacts:
             true
         default:
             false

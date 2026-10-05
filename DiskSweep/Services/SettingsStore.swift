@@ -52,11 +52,47 @@ struct ExclusionSettings: Codable, Hashable, Sendable {
 struct DeveloperSettings: Codable, Hashable, Sendable {
     var isEnabled: Bool
     var includedLocations: Set<CleanupLocation>
+    /// Folders the user chose to search for idle project build artifacts.
+    var projectFolders: [URL]
+    /// How long a project must be unchanged before its artifacts are offered.
+    var projectIdleDays: Int
+
+    static let defaultProjectIdleDays = 90
+    static let projectIdleDayOptions = [30, 60, 90, 180, 365]
 
     static let defaults = DeveloperSettings(
         isEnabled: true,
-        includedLocations: Set(CleanupLocation.allCases.filter(\.isDeveloperCategory))
+        includedLocations: Set(CleanupLocation.allCases.filter(\.isDeveloperCategory)),
+        projectFolders: [],
+        projectIdleDays: defaultProjectIdleDays
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case includedLocations
+        case projectFolders
+        case projectIdleDays
+    }
+}
+
+extension DeveloperSettings {
+    // Settings saved before project folders existed omit the newer keys.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        includedLocations = try container.decode(
+            Set<CleanupLocation>.self,
+            forKey: .includedLocations
+        )
+        projectFolders = try container.decodeIfPresent(
+            [URL].self,
+            forKey: .projectFolders
+        ) ?? []
+        projectIdleDays = try container.decodeIfPresent(
+            Int.self,
+            forKey: .projectIdleDays
+        ) ?? Self.defaultProjectIdleDays
+    }
 }
 
 struct PrivacySettings: Codable, Hashable, Sendable {
@@ -150,14 +186,21 @@ final class SettingsStore {
         privacy = loaded.privacy
     }
 
+    /// Developer categories are controlled only by the Developer settings, so a category added
+    /// after the scan settings were first saved can still be turned on there.
     var effectiveScanLocations: Set<CleanupLocation> {
-        scan.includedLocations.filter { location in
-            !location.isDeveloperCategory
-                || (developer.isEnabled && developer.includedLocations.contains(location))
-        }
+        Set(CleanupLocation.allCases.filter { location in
+            location.isDeveloperCategory
+                ? developer.isEnabled && developer.includedLocations.contains(location)
+                : scan.includedLocations.contains(location)
+        })
     }
 
     var excludedURLs: [URL] { exclusions.customURLs }
+
+    var projectIdleInterval: TimeInterval {
+        TimeInterval(max(1, developer.projectIdleDays)) * 24 * 60 * 60
+    }
 
     func isScanLocationEnabled(_ location: CleanupLocation) -> Bool {
         effectiveScanLocations.contains(location)
@@ -197,6 +240,29 @@ final class SettingsStore {
     func removeExclusion(_ url: URL) {
         let path = url.standardizedFileURL.path
         exclusions.customURLs.removeAll { $0.standardizedFileURL.path == path }
+    }
+
+    /// Adds a project folder and turns on the project-artifact category, since choosing a
+    /// folder is an explicit request to scan it.
+    func addProjectFolder(_ url: URL) {
+        guard url.isFileURL else { return }
+
+        let standardizedURL = url.standardizedFileURL
+        guard !developer.projectFolders.contains(where: {
+            $0.standardizedFileURL.path == standardizedURL.path
+        }) else {
+            return
+        }
+
+        var updated = developer
+        updated.projectFolders.append(standardizedURL)
+        updated.includedLocations.insert(.projectArtifacts)
+        developer = updated
+    }
+
+    func removeProjectFolder(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        developer.projectFolders.removeAll { $0.standardizedFileURL.path == path }
     }
 
     func resetToDefaults() {

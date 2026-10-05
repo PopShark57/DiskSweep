@@ -40,7 +40,7 @@ final class AppViewModel {
     let permissions: PermissionManager
 
     @ObservationIgnored private let homeDirectory: URL
-    @ObservationIgnored private let providers: [any CleanupProvider]
+    @ObservationIgnored private let standardProviders: [any CleanupProvider]
     @ObservationIgnored private let diskService: DiskService
     @ObservationIgnored private let cleanupEngine: CleanupEngine
     @ObservationIgnored private let finderService: FinderService
@@ -66,7 +66,20 @@ final class AppViewModel {
         self.diskService = diskService
         self.cleanupEngine = cleanupEngine
         self.finderService = finderService
-        providers = StandardCleanupProviders.all(homeDirectory: home)
+        standardProviders = StandardCleanupProviders.all(homeDirectory: home)
+    }
+
+    /// The fixed cleanup locations plus the project folders currently chosen in Settings.
+    /// Cleanup authorizations are built from this at cleanup time, so removing a project
+    /// folder also revokes cleanup of anything previously found inside it.
+    private var providers: [any CleanupProvider] {
+        standardProviders + [
+            ProjectArtifactsProvider(
+                projectFolders: settings.developer.projectFolders,
+                minimumAge: settings.projectIdleInterval,
+                homeDirectory: homeDirectory
+            )
+        ]
     }
 
     var isCleanupScanning: Bool { cleanupScanTask != nil }

@@ -19,6 +19,8 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
     let modifiedAt: Date?
     let risk: CleanupRisk
     let explanation: String
+    /// A short, item-specific note shown under the item's path, such as how to rebuild it.
+    let detail: String?
     let isSelectedByDefault: Bool
     let isDeletable: Bool
     let children: [CleanupItem]
@@ -35,6 +37,7 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
         modifiedAt: Date? = nil,
         risk: CleanupRisk,
         explanation: String,
+        detail: String? = nil,
         isSelectedByDefault: Bool? = nil,
         isDeletable: Bool = true,
         children: [CleanupItem] = []
@@ -50,6 +53,7 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
         self.modifiedAt = modifiedAt
         self.risk = risk
         self.explanation = explanation
+        self.detail = detail
         self.isSelectedByDefault = isSelectedByDefault ?? risk.isSelectedByDefault
         self.isDeletable = isDeletable
         self.children = children

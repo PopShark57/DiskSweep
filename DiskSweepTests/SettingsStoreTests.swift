@@ -74,6 +74,67 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(model.preferredUserFileDisposition, .permanent)
     }
 
+    func testSettingsSavedBeforeProjectFoldersStillLoad() throws {
+        let defaults = makeUserDefaults()
+        let legacy = """
+        {
+          "version": 1,
+          "general": {
+            "confirmBeforeCleanup": true,
+            "preferMoveToTrash": true,
+            "showHiddenFiles": true,
+            "automaticallyScanOnLaunch": false
+          },
+          "scan": { "includedLocations": ["userCaches", "xcodeDerivedData"] },
+          "exclusions": {
+            "customURLs": [],
+            "excludeVersionControlMetadata": true,
+            "excludeNodeModulesFromDeepScans": true,
+            "excludeCloudPlaceholders": true,
+            "excludePhotoLibraries": true,
+            "excludeTimeMachineBackups": true,
+            "excludePackageContents": true
+          },
+          "developer": { "isEnabled": true, "includedLocations": ["xcodeDerivedData"] },
+          "privacy": { "keepLocalCleanupHistory": true }
+        }
+        """
+        defaults.set(Data(legacy.utf8), forKey: "settings")
+
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+
+        XCTAssertNil(store.lastPersistenceError)
+        XCTAssertTrue(store.general.showHiddenFiles)
+        XCTAssertEqual(store.developer.includedLocations, [.xcodeDerivedData])
+        XCTAssertTrue(store.developer.projectFolders.isEmpty)
+        XCTAssertEqual(store.developer.projectIdleDays, DeveloperSettings.defaultProjectIdleDays)
+        XCTAssertFalse(store.isScanLocationEnabled(.projectArtifacts))
+
+        store.addProjectFolder(URL(fileURLWithPath: "/Users/example/Developer"))
+
+        XCTAssertTrue(store.isScanLocationEnabled(.projectArtifacts))
+        XCTAssertTrue(store.isScanLocationEnabled(.xcodeDerivedData))
+        XCTAssertFalse(store.isScanLocationEnabled(.userLogs))
+    }
+
+    func testProjectFoldersRoundTripWithoutDuplicates() {
+        let defaults = makeUserDefaults()
+        let folder = URL(fileURLWithPath: "/Users/example/Developer")
+
+        let firstStore = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        firstStore.addProjectFolder(folder)
+        firstStore.addProjectFolder(URL(fileURLWithPath: "/Users/example/./Developer"))
+        firstStore.developer.projectIdleDays = 180
+
+        let reloadedStore = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertEqual(reloadedStore.developer.projectFolders, [folder.standardizedFileURL])
+        XCTAssertEqual(reloadedStore.developer.projectIdleDays, 180)
+        XCTAssertEqual(reloadedStore.projectIdleInterval, 180 * 86_400)
+
+        reloadedStore.removeProjectFolder(folder)
+        XCTAssertTrue(reloadedStore.developer.projectFolders.isEmpty)
+    }
+
     private func makeUserDefaults() -> UserDefaults {
         let suiteName = "SettingsStoreTests.\(UUID().uuidString)"
         return UserDefaults(suiteName: suiteName)!

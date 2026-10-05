@@ -6,7 +6,14 @@ struct SettingsView: View {
     @Bindable var permissions: PermissionManager
 
     @State private var selectedTab: SettingsTab = .general
-    @State private var isChoosingExclusion = false
+    @State private var folderPickerPurpose: FolderPickerPurpose?
+
+    /// One file importer serves both folder lists; SwiftUI does not reliably support
+    /// more than one `fileImporter` on the same view.
+    enum FolderPickerPurpose {
+        case exclusion
+        case projectFolder
+    }
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general
@@ -62,12 +69,25 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 500)
         .fileImporter(
-            isPresented: $isChoosingExclusion,
+            isPresented: Binding(
+                get: { folderPickerPurpose != nil },
+                set: { isPresented in
+                    if !isPresented { folderPickerPurpose = nil }
+                }
+            ),
             allowedContentTypes: [.folder],
             allowsMultipleSelection: true
         ) { result in
+            let purpose = folderPickerPurpose
+            folderPickerPurpose = nil
             guard case .success(let urls) = result else { return }
-            for url in urls { settings.addExclusion(url) }
+            for url in urls {
+                switch purpose {
+                case .exclusion: settings.addExclusion(url)
+                case .projectFolder: settings.addProjectFolder(url)
+                case nil: break
+                }
+            }
         }
     }
 
@@ -164,7 +184,7 @@ struct SettingsView: View {
                 Text("Custom Exclusions")
                     .font(.headline)
                 Spacer()
-                Button("Add Folder…") { isChoosingExclusion = true }
+                Button("Add Folder…") { folderPickerPurpose = .exclusion }
             }
 
             if settings.exclusions.customURLs.isEmpty {
@@ -203,7 +223,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             settingsToggle(
                 "Enable developer cleanup",
-                detail: "Show Xcode, Swift Package Manager, simulator, and Homebrew cleanup locations.",
+                detail: "Show Xcode, Swift Package Manager, simulator, Homebrew, and project build-artifact cleanup locations.",
                 isOn: $settings.developer.isEnabled
             )
             .cardSurface(padding: 0)
@@ -223,6 +243,71 @@ struct SettingsView: View {
                 }
             }
             .cardSurface(padding: 0)
+
+            projectFolderSettings
+                .disabled(!settings.developer.isEnabled)
+        }
+    }
+
+    private var projectFolderSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Project Folders")
+                        .font(.headline)
+                    Text("DiskSweep looks here for virtual environments, node_modules, and tagged build caches, and offers them only when their project has been idle. Nothing is selected automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Add Folder…") { folderPickerPurpose = .projectFolder }
+            }
+
+            Picker("Offer artifacts from projects unchanged for", selection: $settings.developer.projectIdleDays) {
+                ForEach(DeveloperSettings.projectIdleDayOptions, id: \.self) { days in
+                    Text("\(days) days").tag(days)
+                }
+            }
+            .frame(maxWidth: 420)
+
+            if settings.developer.projectFolders.isEmpty {
+                Text("No project folders. Add the folder where you keep your code, such as ~/Developer.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .cardSurface()
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(settings.developer.projectFolders, id: \.standardizedFileURL.path) { url in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(.secondary)
+                                Text(url.path(percentEncoded: false))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button {
+                                    settings.removeProjectFolder(url)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Remove \(url.lastPathComponent) from project folders")
+                            }
+                            if let reason = ProjectArtifactsProvider.refusalReason(for: url) {
+                                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(12)
+                        if url != settings.developer.projectFolders.last { Divider() }
+                    }
+                }
+                .cardSurface(padding: 0)
+            }
         }
     }
 

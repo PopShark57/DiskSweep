@@ -118,6 +118,10 @@ actor CleanupEngine {
                 for: item,
                 requested: disposition
             )
+            let isProjectArtifact = item.location == .projectArtifacts
+            let permittedNestedNames = isProjectArtifact
+                ? ProjectArtifactRules.permittedNestedNames
+                : []
             let scanSnapshot = CleanupSnapshotRegistry.shared.snapshot(
                 providerID: item.providerID,
                 itemID: item.id
@@ -159,8 +163,15 @@ actor CleanupEngine {
                     )
                     try validator.validateDirectoryContents(
                         validated,
-                        exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions
+                        exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
+                        permittedNestedNames: permittedNestedNames
                     )
+                    if isProjectArtifact,
+                       ProjectArtifactRules.kind(ofDirectory: validated.deletionURL) == nil {
+                        throw SafetyValidationError.unrecognizedProjectArtifact(
+                            validated.deletionURL.path
+                        )
+                    }
                     validated = try validator.revalidate(
                         validated,
                         location: item.location,
@@ -236,7 +247,9 @@ actor CleanupEngine {
         requested: CleanupDisposition?
     ) -> CleanupDisposition {
         if item.location == .trash { return .permanent }
-        if item.location == .downloads || item.risk == .userFiles {
+        if item.location == .downloads
+            || item.location == .projectArtifacts
+            || item.risk == .userFiles {
             return requested ?? .trash
         }
         return .permanent
