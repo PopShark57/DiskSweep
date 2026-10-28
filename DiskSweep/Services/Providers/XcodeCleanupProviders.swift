@@ -307,7 +307,7 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
         context: ScanContext,
         progress: @escaping ScanProgressHandler
     ) async -> ProviderScanResult {
-        await ProviderSupport.scanChildren(
+        let result = await ProviderSupport.scanChildren(
             providerID: id,
             location: location,
             roots: allowedRoots,
@@ -315,5 +315,78 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
             progress: progress,
             forceDefaultSelection: false
         )
+
+        // A beta build's symbols are useless once the device runs the release build of the
+        // same version, so those are selected. Item IDs are kept so scan snapshots still match.
+        let folders = result.items.compactMap { DeviceSupportFolder(url: $0.url) }
+        let items = result.items.map { item -> CleanupItem in
+            guard let folder = DeviceSupportFolder(url: item.url), folder.isBetaBuild,
+                  let release = folders.first(where: {
+                      !$0.isBetaBuild && $0.supersedes(folder)
+                  }) else {
+                return item
+            }
+            return CleanupItem(
+                id: item.id,
+                providerID: item.providerID,
+                location: item.location,
+                name: item.name,
+                url: item.url,
+                size: item.size,
+                fileCount: item.fileCount,
+                kind: item.kind,
+                modifiedAt: item.modifiedAt,
+                risk: item.risk,
+                explanation: item.explanation,
+                detail: "Beta build replaced by release build \(release.build)",
+                isSelectedByDefault: item.isDeletable,
+                isDeletable: item.isDeletable
+            )
+        }
+        return ProviderScanResult(location: location, items: items, issues: result.issues)
+    }
+}
+
+/// A device support folder name such as `iPhone17,2 27.2 (24B115)` or
+/// `27.2 (24S116) universal`.
+struct DeviceSupportFolder: Hashable, Sendable {
+    let platformFolder: String
+    let device: String
+    let version: String
+    let build: String
+    let variant: String
+
+    init?(url: URL) {
+        let name = url.lastPathComponent
+        guard let open = name.lastIndex(of: "("),
+              let close = name.lastIndex(of: ")"),
+              open < close else {
+            return nil
+        }
+        var prefix = name[..<open].split(separator: " ").map(String.init)
+        guard let version = prefix.popLast() else { return nil }
+        platformFolder = url.deletingLastPathComponent().lastPathComponent
+        device = prefix.joined(separator: " ")
+        self.version = version
+        build = String(name[name.index(after: open)..<close])
+        variant = name[name.index(after: close)...]
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+    }
+
+    /// Apple's beta builds end in a lowercase letter after a four-digit build number, such as
+    /// `24B5089g`. Rapid Security Responses (`20F75c`) have shorter numbers and are not betas.
+    var isBetaBuild: Bool {
+        guard let last = build.last, last.isLowercase else { return false }
+        let digits = build.dropLast().reversed().prefix { $0.isNumber }
+        return digits.count >= 4
+    }
+
+    func supersedes(_ other: DeviceSupportFolder) -> Bool {
+        platformFolder == other.platformFolder
+            && device == other.device
+            && version == other.version
+            && variant == other.variant
+            && build != other.build
     }
 }

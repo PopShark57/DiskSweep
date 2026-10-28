@@ -118,10 +118,7 @@ actor CleanupEngine {
                 for: item,
                 requested: disposition
             )
-            let isProjectArtifact = item.location == .projectArtifacts
-            let permittedNestedNames = isProjectArtifact
-                ? ProjectArtifactRules.permittedNestedNames
-                : []
+            let permittedNestedNames = Self.permittedNestedNames(for: item.location)
             let scanSnapshot = CleanupSnapshotRegistry.shared.snapshot(
                 providerID: item.providerID,
                 itemID: item.id
@@ -166,12 +163,7 @@ actor CleanupEngine {
                         exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
                         permittedNestedNames: permittedNestedNames
                     )
-                    if isProjectArtifact,
-                       ProjectArtifactRules.kind(ofDirectory: validated.deletionURL) == nil {
-                        throw SafetyValidationError.unrecognizedProjectArtifact(
-                            validated.deletionURL.path
-                        )
-                    }
+                    try Self.requireStillQualifies(validated, location: item.location)
                     validated = try validator.revalidate(
                         validated,
                         location: item.location,
@@ -247,12 +239,47 @@ actor CleanupEngine {
         requested: CleanupDisposition?
     ) -> CleanupDisposition {
         if item.location == .trash { return .permanent }
-        if item.location == .downloads
-            || item.location == .projectArtifacts
-            || item.risk == .userFiles {
+        if item.location.defaultsToTrash || item.risk == .userFiles {
             return requested ?? .trash
         }
         return .permanent
+    }
+
+    private static func permittedNestedNames(for location: CleanupLocation) -> Set<String> {
+        switch location {
+        case .projectArtifacts: ProjectArtifactRules.permittedNestedNames
+        case .staleIDEVersions: StaleIDEVersionRules.permittedNestedNames
+        default: []
+        }
+    }
+
+    /// Locations chosen by rules rather than by a fixed folder repeat those rules right before
+    /// removal, because a marker, a newer version, or an emulator may have changed since the scan.
+    private static func requireStillQualifies(
+        _ validated: ValidatedCleanupTarget,
+        location: CleanupLocation
+    ) throws {
+        let url = validated.deletionURL
+        switch location {
+        case .projectArtifacts:
+            if ProjectArtifactRules.kind(ofDirectory: url) == nil {
+                throw SafetyValidationError.unrecognizedProjectArtifact(url.path)
+            }
+        case .staleIDEVersions:
+            if !StaleIDEVersionRules.isRemovable(url, approvedRoot: validated.approvedRoot) {
+                throw SafetyValidationError.noLongerQualifies(url.path)
+            }
+        case .electronAppCaches:
+            if !ElectronAppCacheRules.isCacheFolder(url, inApplication: validated.approvedRoot) {
+                throw SafetyValidationError.noLongerQualifies(url.path)
+            }
+        case .androidSystemImages:
+            if !AndroidSystemImageRules.isRemovable(url, approvedRoot: validated.approvedRoot) {
+                throw SafetyValidationError.noLongerQualifies(url.path)
+            }
+        default:
+            break
+        }
     }
 
     private func deduplicated(_ items: [CleanupItem]) -> [CleanupItem] {

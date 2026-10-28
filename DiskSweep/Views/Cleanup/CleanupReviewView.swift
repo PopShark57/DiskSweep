@@ -28,15 +28,17 @@ struct CleanupReviewView: View {
 
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     private var includesUserFiles: Bool { items.contains { $0.risk == .userFiles } }
-    private var includesProjectArtifacts: Bool {
-        items.contains { $0.location == .projectArtifacts }
+    /// Developer folders that may hold something irreplaceable, such as old IDE settings or
+    /// hand-installed packages, and so default to the Trash.
+    private var includesTrashFirstFolders: Bool {
+        items.contains { $0.location.defaultsToTrash && $0.location != .downloads }
     }
     private var includesTrash: Bool { items.contains { $0.location == .trash } }
 
     private var dispositionTitle: String {
-        switch (includesUserFiles, includesProjectArtifacts) {
-        case (true, true): "User file and project artifact handling"
-        case (false, true): "Project artifact handling"
+        switch (includesUserFiles, includesTrashFirstFolders) {
+        case (true, true): "User file and developer folder handling"
+        case (false, true): "Developer folder handling"
         default: "User file handling"
         }
     }
@@ -84,7 +86,7 @@ struct CleanupReviewView: View {
                         .cardSurface(padding: 14)
                     }
 
-                    if includesUserFiles || includesProjectArtifacts {
+                    if includesUserFiles || includesTrashFirstFolders {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(dispositionTitle)
                                 .font(.headline)

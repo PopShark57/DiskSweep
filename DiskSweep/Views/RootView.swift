@@ -147,7 +147,8 @@ struct RootView: View {
                 subtitle: "Disposable caches only—never profiles, sessions, preferences, cookies, or application support data.",
                 symbol: "app.badge",
                 categories: model.categories.filter {
-                    [.userCaches, .applicationCaches, .browserCaches].contains($0.location)
+                    [.userCaches, .applicationCaches, .browserCaches, .electronAppCaches]
+                        .contains($0.location)
                 },
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
@@ -158,7 +159,7 @@ struct RootView: View {
         case .developerFiles:
             CleanupListView(
                 title: "Developer Files",
-                subtitle: "Xcode, simulator, Swift Package Manager, Homebrew, and idle project build artifacts with conservative defaults.",
+                subtitle: "Xcode, simulator, package manager, Homebrew, old IDE versions, Android images, and idle project build artifacts with conservative defaults.",
                 symbol: "hammer",
                 categories: model.categories.filter { $0.location.isDeveloperCategory },
                 selectedItemIDs: $model.selectedCleanupItemIDs,

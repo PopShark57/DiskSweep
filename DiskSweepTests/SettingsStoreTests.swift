@@ -105,7 +105,11 @@ final class SettingsStoreTests: XCTestCase {
 
         XCTAssertNil(store.lastPersistenceError)
         XCTAssertTrue(store.general.showHiddenFiles)
-        XCTAssertEqual(store.developer.includedLocations, [.xcodeDerivedData])
+        XCTAssertEqual(
+            store.developer.includedLocations,
+            [.xcodeDerivedData, .developerToolCaches, .staleIDEVersions, .androidSystemImages]
+        )
+        XCTAssertTrue(store.isScanLocationEnabled(.electronAppCaches))
         XCTAssertTrue(store.developer.projectFolders.isEmpty)
         XCTAssertEqual(store.developer.projectIdleDays, DeveloperSettings.defaultProjectIdleDays)
         XCTAssertFalse(store.isScanLocationEnabled(.projectArtifacts))
@@ -115,6 +119,44 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.isScanLocationEnabled(.projectArtifacts))
         XCTAssertTrue(store.isScanLocationEnabled(.xcodeDerivedData))
         XCTAssertFalse(store.isScanLocationEnabled(.userLogs))
+    }
+
+    func testNewCategoriesTurnedOffAfterMigrationStayOff() {
+        let defaults = makeUserDefaults()
+        let legacy = """
+        {
+          "version": 1,
+          "general": {
+            "confirmBeforeCleanup": true,
+            "preferMoveToTrash": true,
+            "showHiddenFiles": false,
+            "automaticallyScanOnLaunch": false
+          },
+          "scan": { "includedLocations": ["userCaches"] },
+          "exclusions": {
+            "customURLs": [],
+            "excludeVersionControlMetadata": true,
+            "excludeNodeModulesFromDeepScans": true,
+            "excludeCloudPlaceholders": true,
+            "excludePhotoLibraries": true,
+            "excludeTimeMachineBackups": true,
+            "excludePackageContents": true
+          },
+          "developer": { "isEnabled": true, "includedLocations": [] },
+          "privacy": { "keepLocalCleanupHistory": true }
+        }
+        """
+        defaults.set(Data(legacy.utf8), forKey: "settings")
+
+        let migrated = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertTrue(migrated.isScanLocationEnabled(.staleIDEVersions))
+        migrated.setDeveloperLocation(.staleIDEVersions, isEnabled: false)
+        migrated.setScanLocation(.electronAppCaches, isEnabled: false)
+
+        let reloaded = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertFalse(reloaded.isScanLocationEnabled(.staleIDEVersions))
+        XCTAssertFalse(reloaded.isScanLocationEnabled(.electronAppCaches))
+        XCTAssertTrue(reloaded.isScanLocationEnabled(.developerToolCaches))
     }
 
     func testProjectFoldersRoundTripWithoutDuplicates() {
