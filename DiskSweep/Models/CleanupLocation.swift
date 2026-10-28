@@ -7,12 +7,16 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     case trash
     case applicationCaches
     case browserCaches
+    case electronAppCaches
     case xcodeDerivedData
     case xcodeArchives
     case xcodeSimulatorData
     case xcodeDeviceSupport
     case swiftPackageCaches
     case homebrewCache
+    case developerToolCaches
+    case staleIDEVersions
+    case androidSystemImages
     case projectArtifacts
     case downloads
 
@@ -26,12 +30,16 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .trash: "Trash"
         case .applicationCaches: "Application Caches"
         case .browserCaches: "Browser Caches"
+        case .electronAppCaches: "Electron App Caches"
         case .xcodeDerivedData: "Xcode DerivedData"
         case .xcodeArchives: "Xcode Archives"
         case .xcodeSimulatorData: "Simulator Data"
         case .xcodeDeviceSupport: "Device Support"
         case .swiftPackageCaches: "Swift Package Caches"
         case .homebrewCache: "Homebrew Cache"
+        case .developerToolCaches: "Package Manager Caches"
+        case .staleIDEVersions: "Old IDE Versions"
+        case .androidSystemImages: "Unused Android System Images"
         case .projectArtifacts: "Project Build Artifacts"
         case .downloads: "Downloads"
         }
@@ -51,6 +59,8 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             "Per-application data that apps can recreate when needed."
         case .browserCaches:
             "Disposable browser cache data only—not profiles or browsing data."
+        case .electronAppCaches:
+            "HTTP, script, and GPU shader caches of Electron and Chromium-based apps—never their settings, sign-ins, or local storage."
         case .xcodeDerivedData:
             "Build products and indexes that Xcode regenerates."
         case .xcodeArchives:
@@ -63,6 +73,12 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             "Downloaded package artifacts that Swift Package Manager can restore."
         case .homebrewCache:
             "Downloaded Homebrew bottles and source archives, never installed packages."
+        case .developerToolCaches:
+            "Download caches for npm, pnpm, Yarn, Bun, pip, uv, Cargo, Gradle, CocoaPods, and Composer, which these tools fetch again when needed."
+        case .staleIDEVersions:
+            "Settings, plugins, and indexes left behind by JetBrains IDE and Android Studio versions you have since upgraded from."
+        case .androidSystemImages:
+            "Android emulator system images that no virtual device uses. Android Studio's SDK Manager can download them again."
         case .projectArtifacts:
             "Virtual environments, dependency folders, and tagged build caches in idle projects inside folders you choose in Settings."
         case .downloads:
@@ -78,12 +94,16 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .trash: "trash"
         case .applicationCaches: "app.badge"
         case .browserCaches: "globe"
+        case .electronAppCaches: "atom"
         case .xcodeDerivedData: "hammer"
         case .xcodeArchives: "archivebox"
         case .xcodeSimulatorData: "iphone.gen3"
         case .xcodeDeviceSupport: "externaldrive.connected.to.line.below"
         case .swiftPackageCaches: "shippingbox.and.arrow.backward"
         case .homebrewCache: "mug"
+        case .developerToolCaches: "shippingbox.circle"
+        case .staleIDEVersions: "clock.badge.xmark"
+        case .androidSystemImages: "smartphone"
         case .projectArtifacts: "folder.badge.gearshape"
         case .downloads: "arrow.down.circle"
         }
@@ -92,10 +112,12 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     var risk: CleanupRisk {
         switch self {
         case .userCaches, .userLogs, .applicationCaches, .browserCaches,
-             .xcodeDerivedData, .swiftPackageCaches, .homebrewCache:
+             .electronAppCaches, .xcodeDerivedData, .swiftPackageCaches, .homebrewCache,
+             .developerToolCaches:
             .safe
         case .temporaryFiles, .trash, .xcodeArchives, .xcodeSimulatorData,
-             .xcodeDeviceSupport, .projectArtifacts:
+             .xcodeDeviceSupport, .staleIDEVersions, .androidSystemImages,
+             .projectArtifacts:
             .reviewRecommended
         case .downloads:
             .userFiles
@@ -106,7 +128,19 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         switch self {
         case .xcodeDerivedData, .xcodeArchives, .xcodeSimulatorData,
              .xcodeDeviceSupport, .swiftPackageCaches, .homebrewCache,
+             .developerToolCaches, .staleIDEVersions, .androidSystemImages,
              .projectArtifacts:
+            true
+        default:
+            false
+        }
+    }
+
+    /// Locations whose items move to the Trash unless the person chooses permanent deletion,
+    /// because they may hold something that cannot be downloaded or rebuilt.
+    var defaultsToTrash: Bool {
+        switch self {
+        case .downloads, .projectArtifacts, .staleIDEVersions:
             true
         default:
             false

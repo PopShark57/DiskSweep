@@ -17,6 +17,7 @@ enum SafetyValidationError: Error, LocalizedError, Sendable {
     case volumeBoundary(String)
     case targetChanged(String)
     case unrecognizedProjectArtifact(String)
+    case noLongerQualifies(String)
 
     var errorDescription: String? {
         switch self {
@@ -50,6 +51,8 @@ enum SafetyValidationError: Error, LocalizedError, Sendable {
             "The target changed after validation and was not removed: \(path)"
         case let .unrecognizedProjectArtifact(path):
             "The folder no longer has the marker that identifies it as a rebuildable project artifact: \(path)"
+        case let .noLongerQualifies(path):
+            "The item no longer qualifies for cleanup. It may be in use again, or the newer version that replaced it is gone: \(path)"
         }
     }
 }
@@ -102,6 +105,14 @@ struct SafetyValidator: Sendable {
     }
 
     func validate(_ target: URL, allowedRoots: [URL]) throws -> ValidatedCleanupTarget {
+        try validate(target, allowedRoots: allowedRoots, location: nil)
+    }
+
+    private func validate(
+        _ target: URL,
+        allowedRoots: [URL],
+        location: CleanupLocation?
+    ) throws -> ValidatedCleanupTarget {
         guard target.isFileURL else { throw SafetyValidationError.nonFileURL }
         guard !Self.containsTraversal(in: target) else {
             throw SafetyValidationError.traversalComponent(target.path)
@@ -116,7 +127,7 @@ struct SafetyValidator: Sendable {
         guard !existingRoots.isEmpty else {
             throw SafetyValidationError.noApprovedRoots
         }
-        let roots = try existingRoots.map(canonicalApprovedRoot)
+        let roots = try existingRoots.map { try canonicalApprovedRoot($0, location: location) }
         let requested = target.standardizedFileURL
 
         let requestedIdentity = try Self.captureIdentity(at: requested)
@@ -168,14 +179,14 @@ struct SafetyValidator: Sendable {
                 throw SafetyValidationError.invalidApprovedRoot(resolved.path)
             }
         }
-        return try validate(target, allowedRoots: allowedRoots)
+        return try validate(target, allowedRoots: allowedRoots, location: location)
     }
 
     func preflightApprovedRoot(
         _ root: URL,
         location: CleanupLocation
     ) throws -> URL {
-        let approved = try canonicalApprovedRoot(root)
+        let approved = try canonicalApprovedRoot(root, location: location)
         guard isExpectedRoot(approved.resolved, for: location) else {
             throw SafetyValidationError.invalidApprovedRoot(approved.resolved.path)
         }
@@ -283,7 +294,10 @@ struct SafetyValidator: Sendable {
         let identity: FileIdentity
     }
 
-    private func canonicalApprovedRoot(_ root: URL) throws -> ApprovedRoot {
+    private func canonicalApprovedRoot(
+        _ root: URL,
+        location: CleanupLocation?
+    ) throws -> ApprovedRoot {
         guard root.isFileURL, !Self.containsTraversal(in: root) else {
             throw SafetyValidationError.invalidApprovedRoot(root.path)
         }
@@ -311,7 +325,7 @@ struct SafetyValidator: Sendable {
               resolved.path != "/",
               resolved != homeDirectory,
               isWithinUserScope(resolved),
-              !isProtectedApprovedRoot(resolved) else {
+              !isProtectedApprovedRoot(resolved, location: location) else {
             throw SafetyValidationError.invalidApprovedRoot(resolved.path)
         }
 
@@ -338,6 +352,8 @@ struct SafetyValidator: Sendable {
             return isApplicationContainerCacheRoot(root)
         case .browserCaches:
             return isBrowserCacheRoot(root)
+        case .electronAppCaches:
+            return ElectronAppCacheRules.isApplicationDirectory(root, homeDirectory: homeDirectory)
         case .xcodeDerivedData:
             return root == xcode.appendingPathComponent("DerivedData", isDirectory: true)
         case .xcodeArchives:
@@ -365,6 +381,16 @@ struct SafetyValidator: Sendable {
                 isDirectory: true
             )
             return Self.isSameOrDescendant(root, of: standard)
+        case .developerToolCaches:
+            return DeveloperToolCacheProvider.cacheDirectories.contains {
+                homeDirectory.appendingPathComponent($0.relativePath, isDirectory: true)
+                    .pathComponents == root.pathComponents
+            }
+        case .staleIDEVersions:
+            return isStaleIDEVersionsRoot(root)
+        case .androidSystemImages:
+            return AndroidSystemImageRules.imagesRoot(homeDirectory: homeDirectory)
+                .pathComponents == root.pathComponents
         case .projectArtifacts:
             // Project folders are chosen by the user. Protected locations and the home folder
             // itself are already refused by canonicalApprovedRoot; the Library and Trash are
@@ -373,6 +399,15 @@ struct SafetyValidator: Sendable {
             return Self.isSameOrDescendant(root, of: homeDirectory)
                 && !Self.isSameOrDescendantCaseInsensitive(root, of: library)
                 && !Self.isSameOrDescendantCaseInsensitive(root, of: trash)
+        }
+    }
+
+    /// IDE version folders live directly in Application Support, which is otherwise only
+    /// approved for cache-named folders. Only these exact vendor folders are accepted, and the
+    /// cleanup engine separately requires every target to be a superseded version folder.
+    private func isStaleIDEVersionsRoot(_ root: URL) -> Bool {
+        StaleIDEVersionRules.roots(homeDirectory: homeDirectory).contains {
+            $0.standardizedFileURL.pathComponents == root.standardizedFileURL.pathComponents
         }
     }
 
@@ -456,8 +491,15 @@ struct SafetyValidator: Sendable {
             || (Self.isSameOrDescendant(url, of: homeDirectory) && url != homeDirectory)
     }
 
-    private func isProtectedApprovedRoot(_ url: URL) -> Bool {
+    private func isProtectedApprovedRoot(_ url: URL, location: CleanupLocation?) -> Bool {
         if isProtected(url) { return true }
+        // These roots sit in Application Support. The engine only lets each one's items go
+        // after rechecking that they are superseded IDE versions or Chromium cache folders.
+        if location == .staleIDEVersions, isStaleIDEVersionsRoot(url) { return false }
+        if location == .electronAppCaches,
+           ElectronAppCacheRules.isApplicationDirectory(url, homeDirectory: homeDirectory) {
+            return false
+        }
 
         let applicationSupport = homeDirectory
             .appendingPathComponent("Library/Application Support", isDirectory: true)

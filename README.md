@@ -26,7 +26,12 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 
 ### Cleanup discovery and analysis
 
-- Cleanup providers for explicit user-scoped roots: user and application caches, logs, current-user temporary files, Trash, browser caches, Downloads, Xcode DerivedData and archives, simulator caches, Xcode Device Support, Swift Package Manager caches, and Homebrew downloads.
+- Cleanup providers for explicit user-scoped roots: user and application caches, logs, current-user temporary files, Trash, browser caches, Electron app caches, Downloads, Xcode DerivedData and archives, simulator caches, Xcode Device Support, Swift Package Manager caches, Homebrew downloads, and package manager caches.
+- Xcode Device Support beta builds that a release build of the same OS version has replaced are preselected; other Device Support folders still require review.
+- Electron and Chromium-based app caches (for example Visual Studio Code, Slack, Discord, Teams) in `~/Library/Application Support/<App>`. An app folder is only recognized when Chromium's `Local State` file is present, and only Chromium cache folders such as `Cache`, `Code Cache`, `GPUCache`, and shader caches are offered—never Local Storage, IndexedDB, cookies, or Service Worker data.
+- Package manager caches that live outside `~/Library/Caches`: npm, pnpm, Yarn Berry, Bun, pip, uv, pre-commit, Cargo, Gradle, CocoaPods, Composer, and node-gyp. The uv cache is never preselected because uv can be configured to symlink environments into it. Maven's local repository, Go's module cache, and conda's package cache are deliberately left out.
+- Old IDE versions: per-version JetBrains and Android Studio folders in `~/Library/Application Support/JetBrains` and `~/Library/Application Support/Google` that a newer version of the same product (or, for PyCharm and IntelliJ IDEA Community, the unified product) has replaced, and that have not been used for 30 days. They are never preselected and move to the Trash by default.
+- Unused Android emulator system images in `~/Library/Android/sdk/system-images` that no virtual device in `~/.android/avd` boots. If any virtual device's configuration can't be read, no image is offered.
 - Project build artifacts in idle projects, limited to project folders the user adds under **Settings > Developer**. See [Project build artifacts](#project-build-artifacts).
 - Log cleanup is limited to individual files that have remained unchanged for at least 30 days; active logs and whole log directories are never offered, and old logs still require review.
 - Large-file discovery with configurable thresholds.
@@ -40,7 +45,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 - A centralized cleanup engine that accepts provider-specific authorizations and uses `FileManager` for Trash or permanent removal.
 - A final identity and boundary revalidation immediately before each filesystem mutation.
 - Cleanup results and history distinguish bytes moved to Trash from capacity actually recovered; same-volume Trash moves are never credited as free space.
-- Local settings stored in `UserDefaults`, including general behavior, scan locations, exclusions, developer categories, and privacy preferences.
+- Local settings stored in `UserDefaults`, including general behavior, scan locations, exclusions, developer categories, and privacy preferences. Cleanup categories added in an update start out enabled for existing settings, and categories you turn off stay off.
 - Bounded cleanup history stored as atomically written JSON at:
 
   ```text
@@ -93,6 +98,10 @@ A folder counts as an artifact only when the tool that created it left a marker.
 An artifact is offered only when its project has been unchanged for the configured idle period (90 days by default). DiskSweep treats the folder that contains the artifact as the project. Project activity is the newest modification time of any file under that folder. Files inside artifacts and Finder's `.DS_Store` files don't count. Git's `index`, `HEAD`, and `logs/HEAD` files do count, so recent commits and checkouts keep a project active. Each item shows how long its project has been idle and, when DiskSweep can tell from lock or manifest files, the command that rebuilds it, such as `uv sync`, `poetry install`, `npm install`, or `cargo build`.
 
 Project artifacts are never preselected. By default they move to the Trash, so you can recover a virtual environment that held packages installed by hand. Before each removal, the cleanup engine checks again that the folder still carries its marker. It also refuses any artifact that contains version-control metadata such as a `.git` folder. Nested `node_modules` folders are the only content allowed inside an artifact that DiskSweep's normal folder policy would otherwise refuse.
+
+### Rule-based cleanup locations
+
+Project build artifacts, old IDE versions, Electron app caches, and unused Android system images are chosen by rules rather than by a fixed folder, and their approved roots (a project folder, `Application Support/JetBrains`, an app's data folder, the SDK's `system-images`) contain data that must not be removed. For these locations, the cleanup engine repeats the rule immediately before each removal: the artifact must still carry its marker, the IDE version must still be replaced by a newer one and still unused, the folder must still be a Chromium cache folder of that app, and the image must still be unused by every virtual device. Anything else under the root is refused even if a cleanup item names it.
 
 Arbitrary user files, including Downloads and duplicate copies, are not selected automatically. The cleanup engine defaults user files to the system Trash. Emptying Trash and an explicitly requested permanent deletion remain irreversible operations and must be presented accordingly by the UI.
 
@@ -196,6 +205,7 @@ Review the generated project diff before committing it. For ordinary building, t
 ## Current limitations
 
 - Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped, and simulator cleanup is limited to cache directories rather than simulator app data.
+- Electron app caches are only recognized directly inside `~/Library/Application Support`, not in vendor subfolders such as `Google/Chrome Canary`. Android system images and virtual devices are only recognized in their default locations; a custom `ANDROID_HOME` or `ANDROID_AVD_HOME` is not read.
 - Project folders inside protected locations, such as `~/Documents`, cannot be used for project build-artifact cleanup. Artifacts without a marker, such as Gradle `build/` folders or Python `dist/` folders, are not recognized. The project walk stops at a depth of 12 folders.
 - Full Disk Access detection is necessarily heuristic, and macOS permissions may still hide individual locations.
 - Large-scale performance on Macs containing millions of files has not yet been characterized.

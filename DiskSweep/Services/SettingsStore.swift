@@ -141,6 +141,14 @@ final class SettingsStore {
     @ObservationIgnored private var isRestoring = false
 
     private struct Snapshot: Codable {
+        static let currentVersion = 2
+
+        /// Categories added after settings were first saved start out enabled, like they
+        /// would for a new install. Categories the person turned off stay off.
+        static let locationsAddedInVersion: [Int: Set<CleanupLocation>] = [
+            2: [.electronAppCaches, .developerToolCaches, .staleIDEVersions, .androidSystemImages]
+        ]
+
         let version: Int
         var general: GeneralSettings
         var scan: ScanSettings
@@ -149,13 +157,34 @@ final class SettingsStore {
         var privacy: PrivacySettings
 
         static let defaults = Snapshot(
-            version: 1,
+            version: currentVersion,
             general: .defaults,
             scan: .defaults,
             exclusions: .defaults,
             developer: .defaults,
             privacy: .defaults
         )
+
+        func migrated() -> Snapshot {
+            var snapshot = self
+            for (addedIn, locations) in Self.locationsAddedInVersion where version < addedIn {
+                for location in locations {
+                    if location.isDeveloperCategory {
+                        snapshot.developer.includedLocations.insert(location)
+                    } else {
+                        snapshot.scan.includedLocations.insert(location)
+                    }
+                }
+            }
+            return Snapshot(
+                version: Self.currentVersion,
+                general: snapshot.general,
+                scan: snapshot.scan,
+                exclusions: snapshot.exclusions,
+                developer: snapshot.developer,
+                privacy: snapshot.privacy
+            )
+        }
     }
 
     init(
@@ -168,7 +197,7 @@ final class SettingsStore {
         let loaded: Snapshot
         if let data = userDefaults.data(forKey: storageKey) {
             do {
-                loaded = try JSONDecoder().decode(Snapshot.self, from: data)
+                loaded = try JSONDecoder().decode(Snapshot.self, from: data).migrated()
                 lastPersistenceError = nil
             } catch {
                 loaded = .defaults
@@ -279,7 +308,7 @@ final class SettingsStore {
         }
 
         do {
-            restore(try JSONDecoder().decode(Snapshot.self, from: data))
+            restore(try JSONDecoder().decode(Snapshot.self, from: data).migrated())
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Settings could not be reloaded: \(error.localizedDescription)"
@@ -300,7 +329,7 @@ final class SettingsStore {
         guard !isRestoring else { return }
 
         let snapshot = Snapshot(
-            version: 1,
+            version: Snapshot.currentVersion,
             general: general,
             scan: scan,
             exclusions: exclusions,

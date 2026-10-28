@@ -223,7 +223,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             settingsToggle(
                 "Enable developer cleanup",
-                detail: "Show Xcode, Swift Package Manager, simulator, Homebrew, and project build-artifact cleanup locations.",
+                detail: "Show Xcode, simulator, package manager, Homebrew, IDE, Android, and project build-artifact cleanup locations.",
                 isOn: $settings.developer.isEnabled
             )
             .cardSurface(padding: 0)

@@ -232,6 +232,151 @@ enum ProviderSupport {
         )
     }
 
+    /// A directory a provider found by its own rules, offered as a single cleanup item.
+    struct DirectoryCandidate: Sendable {
+        let url: URL
+        let name: String
+        let explanation: String
+        let detail: String?
+    }
+
+    /// Sizes and snapshots directories that a provider selected by its own rules, such as
+    /// superseded IDE versions. Each approved root is preflighted before `candidates` runs.
+    static func scanDirectoryCandidates(
+        providerID: String,
+        location: CleanupLocation,
+        roots: [URL],
+        context: ScanContext,
+        progress: @escaping ScanProgressHandler,
+        permittedNestedNames: Set<String> = [],
+        candidates: @Sendable (URL) -> [DirectoryCandidate]
+    ) async -> ProviderScanResult {
+        let validator = SafetyValidator(homeDirectory: context.homeDirectory)
+        var issues: [ScanIssue] = []
+        var items: [CleanupItem] = []
+        var snapshots: [UUID: CleanupScanSnapshot] = [:]
+        var inspectedFiles = 0
+        var inspectedBytes: Int64 = 0
+
+        do {
+            for root in existingDirectories(roots) {
+                try Task.checkCancellation()
+                do {
+                    _ = try validator.preflightApprovedRoot(root, location: location)
+                } catch {
+                    issues.append(ScanIssue(
+                        kind: .inaccessible,
+                        path: root.path,
+                        message: error.localizedDescription
+                    ))
+                    continue
+                }
+
+                for candidate in candidates(root) {
+                    try Task.checkCancellation()
+                    let baselineFiles = inspectedFiles
+                    let baselineBytes = inspectedBytes
+                    var isDeletable = true
+                    var explanation = candidate.explanation
+                    var byteCount: Int64 = 0
+                    var fileCount = 0
+
+                    do {
+                        let measured = try await DirectorySizer().size(
+                            of: candidate.url,
+                            exclusions: context.exclusions,
+                            includeHiddenFiles: true,
+                            skipPackages: false,
+                            excludedNames: FileSystemSafetyPolicy.excludedNames
+                                .subtracting(permittedNestedNames),
+                            batchSize: 256
+                        ) { update in
+                            await progress(ScanProgress(
+                                phase: .enumerating,
+                                location: location,
+                                currentPath: update.currentURL.path,
+                                filesAnalyzed: baselineFiles + update.filesAnalyzed,
+                                bytesFound: baselineBytes + update.bytesFound,
+                                completedProviders: 0,
+                                totalProviders: 1
+                            ))
+                        }
+                        byteCount = measured.byteCount
+                        fileCount = measured.fileCount
+                        issues.append(contentsOf: measured.issues)
+                        if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
+                            isDeletable = false
+                            explanation += " It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        issues.append(FileSystemScanner.issue(for: error, at: candidate.url))
+                        isDeletable = false
+                        explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
+                    }
+
+                    guard let identity = try? SafetyValidator.captureIdentity(at: candidate.url),
+                          identity.kind == .directory else {
+                        issues.append(ScanIssue(
+                            kind: .disappeared,
+                            path: candidate.url.path,
+                            message: "The folder changed or disappeared before its cleanup identity could be recorded."
+                        ))
+                        continue
+                    }
+
+                    inspectedFiles += fileCount
+                    inspectedBytes += byteCount
+                    let item = CleanupItem(
+                        providerID: providerID,
+                        location: location,
+                        name: candidate.name,
+                        url: candidate.url,
+                        size: byteCount,
+                        fileCount: fileCount,
+                        kind: .directory,
+                        modifiedAt: identity.modificationDate,
+                        risk: location.risk,
+                        explanation: explanation,
+                        detail: candidate.detail,
+                        isDeletable: isDeletable
+                    )
+                    items.append(item)
+                    snapshots[item.id] = CleanupScanSnapshot(
+                        identity: identity,
+                        exclusionRoots: context.exclusions
+                    )
+                }
+            }
+            try Task.checkCancellation()
+        } catch {
+            CleanupSnapshotRegistry.shared.replace(providerID: providerID, snapshots: [:])
+            return ProviderScanResult(
+                location: location,
+                items: [],
+                issues: issues + [ScanIssue(
+                    kind: .cancelled,
+                    path: roots.last?.path ?? "",
+                    message: "Scanning was cancelled."
+                )]
+            )
+        }
+
+        items.sort { $0.size > $1.size }
+        CleanupSnapshotRegistry.shared.replace(providerID: providerID, snapshots: snapshots)
+        await progress(ScanProgress(
+            phase: .completed,
+            location: location,
+            currentPath: roots.last?.path ?? "",
+            filesAnalyzed: inspectedFiles,
+            bytesFound: inspectedBytes,
+            completedProviders: 1,
+            totalProviders: 1
+        ))
+        return ProviderScanResult(location: location, items: items, issues: issues)
+    }
+
     static func existingDirectories(_ urls: [URL]) -> [URL] {
         var seen: Set<String> = []
         return urls.compactMap { requested in
@@ -263,6 +408,10 @@ enum ProviderSupport {
             return itemName
         case .browserCaches:
             return "\(browserName(for: root)) — \(itemName)"
+        case .xcodeDeviceSupport:
+            // Folder names such as "iPhone17,2 27.2 (24B115)" are already readable.
+            let platform = root.lastPathComponent.replacingOccurrences(of: " DeviceSupport", with: "")
+            return "\(platform) — \(url.lastPathComponent)"
         default:
             return itemName
         }
@@ -281,6 +430,7 @@ enum ProviderSupport {
             "mozilla": "Firefox",
             "com.spotify.client": "Spotify",
             "com.hnc.discord": "Discord",
+            "code": "Visual Studio Code",
             "com.apple.dt.xcode": "Xcode",
             "org.swift.swiftpm": "Swift Package Manager"
         ]
