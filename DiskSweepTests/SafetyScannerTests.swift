@@ -295,6 +295,26 @@ final class SafetyScannerTests: XCTestCase {
         XCTAssertTrue(result.issues.contains { $0.kind == .cancelled })
     }
 
+    /// 1.1 negative test: an exclusion root excludes its own descendants (so a folder that
+    /// contains it is never treated as fully inspected), and a sibling that only shares a
+    /// string prefix is not mistaken for excluded content.
+    func testExclusionRootMatchesWholePathComponentsOnly() async throws {
+        let excluded = root.appendingPathComponent("Keep", isDirectory: true)
+        try writeFile(relativePath: "Keep/secret.bin")
+        try writeFile(relativePath: "Keeper/visible.bin")
+
+        let result = try await FileSystemScanner().scan(
+            root: root,
+            options: FileSystemScanOptions(exclusionURLs: [excluded])
+        )
+
+        XCTAssertEqual(result.items.map(\.url.lastPathComponent), ["visible.bin"])
+        XCTAssertEqual(result.excludedURLs.map(\.lastPathComponent), ["Keep"])
+
+        let sized = try await DirectorySizer().size(of: root, exclusions: [excluded])
+        XCTAssertFalse(sized.excludedURLs.isEmpty, "A folder containing an exclusion must report it")
+    }
+
     @discardableResult
     private func writeFile(relativePath: String, byteCount: Int = 8) throws -> URL {
         let file = root.appendingPathComponent(relativePath)

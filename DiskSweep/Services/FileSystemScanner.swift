@@ -185,8 +185,8 @@ struct FileSystemScanner: Sendable {
                     || options.excludedExtensions.contains(pathExtension)
                     || (options.skipCloudPlaceholders && pathExtension == "icloud")
                     || exclusions.contains(where: {
-                        Self.isSameOrDescendant(standardized, of: $0)
-                            || Self.isSameOrDescendant(resolved, of: $0)
+                        standardized.isSameOrDescendant(of: $0)
+                            || resolved.isSameOrDescendant(of: $0)
                     }) {
                     excludedURLs.append(standardized)
                     enumerator.skipDescendants()
@@ -313,13 +313,6 @@ struct FileSystemScanner: Sendable {
         } onCancel: {
             worker.cancel()
         }
-    }
-
-    private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
     }
 
     static func issue(for error: Error, at url: URL) -> ScanIssue {
