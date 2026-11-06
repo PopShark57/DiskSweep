@@ -82,6 +82,8 @@ final class AppViewModel {
     @ObservationIgnored private var analysisGeneration = 0
     @ObservationIgnored private var cleanupTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var lowSpaceMonitor = LowSpaceMonitor()
+    @ObservationIgnored private var pollingTask: Task<Void, Never>?
     /// Cleanup items for the current Downloads analysis, keyed by file ID. Built once per
     /// analysis, so reading the selection never records new registry snapshots.
     @ObservationIgnored private var downloadCleanupItems: [UUID: CleanupItem] = [:]
@@ -181,6 +183,35 @@ final class AppViewModel {
         await refreshDiskStatistics()
         if settings.general.automaticallyScanOnLaunch {
             startCleanupScan()
+        }
+        startPolling()
+    }
+
+    /// Refreshes free space every 15 minutes while the menu bar extra or the low-space
+    /// notification is on. Disk statistics are read at utility priority, off the main actor.
+    private func startPolling() {
+        pollingTask?.cancel()
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: LowSpaceMonitor.pollInterval)
+                guard let self, !Task.isCancelled else { return }
+                let general = settings.general
+                guard general.showsMenuBarExtra || general.notifiesWhenSpaceIsLow else { continue }
+                await refreshDiskStatistics()
+                await checkLowSpace()
+            }
+        }
+    }
+
+    /// Posts a notification when free space first drops below the chosen threshold.
+    func checkLowSpace() async {
+        guard settings.general.notifiesWhenSpaceIsLow else { return }
+        let threshold = Int64(settings.general.lowSpaceThresholdGB) * 1_000_000_000
+        if lowSpaceMonitor.shouldNotify(available: diskStatistics.available, thresholdBytes: threshold) {
+            await LowSpaceMonitor.postLowSpaceNotification(
+                available: diskStatistics.available,
+                volumeName: diskStatistics.volumeName
+            )
         }
     }
 

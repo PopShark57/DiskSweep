@@ -6,6 +6,14 @@ struct GeneralSettings: Codable, Hashable, Sendable {
     var preferMoveToTrash: Bool
     var showHiddenFiles: Bool
     var automaticallyScanOnLaunch: Bool
+    /// Shows free space and a Scan command in the menu bar.
+    var showsMenuBarExtra: Bool = false
+    /// Posts a notification when free space drops below `lowSpaceThresholdGB`.
+    var notifiesWhenSpaceIsLow: Bool = false
+    var lowSpaceThresholdGB: Int = GeneralSettings.defaultLowSpaceThresholdGB
+
+    static let defaultLowSpaceThresholdGB = 20
+    static let lowSpaceThresholdOptions = [5, 10, 20, 50, 100]
 
     static let defaults = GeneralSettings(
         confirmBeforeCleanup: true,
@@ -13,6 +21,43 @@ struct GeneralSettings: Codable, Hashable, Sendable {
         showHiddenFiles: false,
         automaticallyScanOnLaunch: false
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case confirmBeforeCleanup
+        case preferMoveToTrash
+        case showHiddenFiles
+        case automaticallyScanOnLaunch
+        case showsMenuBarExtra
+        case notifiesWhenSpaceIsLow
+        case lowSpaceThresholdGB
+    }
+}
+
+extension GeneralSettings {
+    init(
+        confirmBeforeCleanup: Bool,
+        preferMoveToTrash: Bool,
+        showHiddenFiles: Bool,
+        automaticallyScanOnLaunch: Bool
+    ) {
+        self.confirmBeforeCleanup = confirmBeforeCleanup
+        self.preferMoveToTrash = preferMoveToTrash
+        self.showHiddenFiles = showHiddenFiles
+        self.automaticallyScanOnLaunch = automaticallyScanOnLaunch
+    }
+
+    // Settings saved before the menu bar options existed omit the newer keys.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        confirmBeforeCleanup = try container.decode(Bool.self, forKey: .confirmBeforeCleanup)
+        preferMoveToTrash = try container.decode(Bool.self, forKey: .preferMoveToTrash)
+        showHiddenFiles = try container.decode(Bool.self, forKey: .showHiddenFiles)
+        automaticallyScanOnLaunch = try container.decode(Bool.self, forKey: .automaticallyScanOnLaunch)
+        showsMenuBarExtra = try container.decodeIfPresent(Bool.self, forKey: .showsMenuBarExtra) ?? false
+        notifiesWhenSpaceIsLow = try container.decodeIfPresent(Bool.self, forKey: .notifiesWhenSpaceIsLow) ?? false
+        lowSpaceThresholdGB = try container.decodeIfPresent(Int.self, forKey: .lowSpaceThresholdGB)
+            ?? Self.defaultLowSpaceThresholdGB
+    }
 }
 
 struct ScanSettings: Codable, Hashable, Sendable {

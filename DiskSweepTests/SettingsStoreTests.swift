@@ -182,6 +182,29 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertNotEqual(defaults.data(forKey: "settings"), garbage)
     }
 
+    /// F9: settings saved before the menu bar options existed still load, with them off.
+    func testSettingsWithoutMenuBarKeysLoadWithThemOff() throws {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        store.general.showHiddenFiles = true
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(defaults.data(forKey: "settings"))) as? [String: Any]
+        )
+        var general = try XCTUnwrap(json["general"] as? [String: Any])
+        general.removeValue(forKey: "showsMenuBarExtra")
+        general.removeValue(forKey: "notifiesWhenSpaceIsLow")
+        general.removeValue(forKey: "lowSpaceThresholdGB")
+        json["general"] = general
+        defaults.set(try JSONSerialization.data(withJSONObject: json), forKey: "settings")
+
+        let reloaded = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertNil(reloaded.lastPersistenceError)
+        XCTAssertTrue(reloaded.general.showHiddenFiles)
+        XCTAssertFalse(reloaded.general.showsMenuBarExtra)
+        XCTAssertFalse(reloaded.general.notifiesWhenSpaceIsLow)
+        XCTAssertEqual(reloaded.general.lowSpaceThresholdGB, GeneralSettings.defaultLowSpaceThresholdGB)
+    }
+
     func testNewCategoriesTurnedOffAfterMigrationStayOff() {
         let defaults = makeUserDefaults()
         let legacy = """

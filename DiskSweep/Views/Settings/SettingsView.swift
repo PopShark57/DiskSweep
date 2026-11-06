@@ -128,6 +128,31 @@ struct SettingsView: View {
                 detail: "Start a cleanup-location scan after DiskSweep opens.",
                 isOn: $settings.general.automaticallyScanOnLaunch
             )
+            Divider()
+            settingsToggle(
+                "Show in menu bar",
+                detail: "Show free space and a Scan command in the menu bar. Free space refreshes every 15 minutes.",
+                isOn: $settings.general.showsMenuBarExtra
+            )
+            Divider()
+            settingsToggle(
+                "Notify when free space is low",
+                detail: "Post a notification once when free space drops below the amount you choose. Checked every 15 minutes.",
+                isOn: $settings.general.notifiesWhenSpaceIsLow
+            )
+            .onChange(of: settings.general.notifiesWhenSpaceIsLow) { _, isOn in
+                if isOn { Task { _ = await LowSpaceMonitor.requestAuthorization() } }
+            }
+            if settings.general.notifiesWhenSpaceIsLow {
+                Picker("Warn below", selection: $settings.general.lowSpaceThresholdGB) {
+                    ForEach(GeneralSettings.lowSpaceThresholdOptions, id: \.self) { gigabytes in
+                        Text("\(gigabytes) GB").tag(gigabytes)
+                    }
+                }
+                .frame(width: 220)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
         }
         .cardSurface(padding: 0)
     }

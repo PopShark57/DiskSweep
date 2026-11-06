@@ -2,10 +2,12 @@ import SwiftUI
 
 @main
 struct DiskSweepApp: App {
+    static let mainWindowID = "main"
+
     @State private var model = Self.makeModel()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: Self.mainWindowID) {
             RootView(model: model)
                 .frame(minWidth: 980, minHeight: 680)
         }
@@ -23,6 +25,15 @@ struct DiskSweepApp: App {
                 deleteHistoryFile: model.deleteHistoryFile
             )
             .frame(width: 760, height: 560)
+        }
+
+        MenuBarExtra(isInserted: Binding(
+            get: { model.settings.general.showsMenuBarExtra },
+            set: { model.settings.general.showsMenuBarExtra = $0 }
+        )) {
+            MenuBarContent(model: model)
+        } label: {
+            Label("DiskSweep", systemImage: "internaldrive")
         }
     }
 
