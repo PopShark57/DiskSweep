@@ -151,7 +151,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 settingsToggle(
                     "Version-control metadata",
-                    detail: "Exclude .git and .svn folders.",
+                    detail: "Skip .git and .svn folders in analysis views. Cleanup never removes folders that contain them, except Git clones that Xcode DerivedData and package-manager caches keep for themselves.",
                     isOn: $settings.exclusions.excludeVersionControlMetadata
                 )
                 Divider()
