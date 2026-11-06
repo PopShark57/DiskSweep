@@ -76,6 +76,14 @@ struct DirectoryNode: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+extension DirectoryNode {
+    /// Bytes in this folder that no listed child accounts for: files stored directly in it,
+    /// plus subfolders too small to be listed. Shown so the rows add up to the folder total.
+    var unlistedSize: Int64 {
+        max(0, size - children.reduce(0) { $0 + $1.size })
+    }
+}
+
 struct DuplicateGroup: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let fingerprint: String

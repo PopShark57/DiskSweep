@@ -47,6 +47,9 @@ struct DiskUsageView: View {
                         ForEach(currentNode.children.sorted { $0.size > $1.size }) { child in
                             usageRow(child, parentSize: currentNode.size)
                         }
+                        if currentNode.unlistedSize > 0 {
+                            unlistedRow(size: currentNode.unlistedSize, parentSize: currentNode.size)
+                        }
                     }
                 } else {
                     EmptyAnalysisView(
@@ -83,6 +86,27 @@ struct DiskUsageView: View {
         .font(.callout)
     }
 
+    /// A row that can't be opened: files stored directly in this folder, and subfolders too
+    /// small to list.
+    private func unlistedRow(size: Int64, parentSize: Int64) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("Files in this folder", systemImage: "doc.on.doc")
+                    .font(.headline)
+                Spacer()
+                Text(FileSizeFormatter.string(fromByteCount: size))
+                    .font(.headline)
+                    .monospacedDigit()
+            }
+            UsageBar(fraction: Double(size) / Double(max(1, parentSize)))
+            Text("Includes smaller folders that aren't listed • \((Double(size) / Double(max(1, parentSize))).formatted(.percent.precision(.fractionLength(1)))) of this folder")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .cardSurface(padding: 14)
+    }
+
     private func usageRow(_ node: DirectoryNode, parentSize: Int64) -> some View {
         Button {
             guard !node.children.isEmpty else {
@@ -103,23 +127,7 @@ struct DiskUsageView: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.07))
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.diskSweepBlue, .diskSweepTeal],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(
-                                width: proxy.size.width * min(1, max(0, Double(node.size) / Double(max(1, parentSize))))
-                            )
-                    }
-                }
-                .frame(height: 10)
+                UsageBar(fraction: Double(node.size) / Double(max(1, parentSize)))
 
                 Text("\(node.fileCount.formatted()) files • \((Double(node.size) / Double(max(1, parentSize))).formatted(.percent.precision(.fractionLength(1)))) of this folder")
                     .font(.caption)
@@ -132,3 +140,24 @@ struct DiskUsageView: View {
     }
 }
 
+private struct UsageBar: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.07))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.diskSweepBlue, .diskSweepTeal],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: proxy.size.width * min(1, max(0, fraction)))
+            }
+        }
+        .frame(height: 10)
+    }
+}

@@ -189,4 +189,14 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
         XCTAssertTrue(result.groups.isEmpty)
     }
+
+    /// M5: the "Files in this folder" row makes the rows add up to the folder's total.
+    func testUnlistedSizeMakesRowsAddUpToTheFolderTotal() {
+        let child = DirectoryNode(url: URL(fileURLWithPath: "/x/a"), size: 600, fileCount: 2)
+        let other = DirectoryNode(url: URL(fileURLWithPath: "/x/b"), size: 300, fileCount: 1)
+        let folder = DirectoryNode(url: URL(fileURLWithPath: "/x"), size: 1_000, fileCount: 5, children: [child, other])
+        XCTAssertEqual(folder.unlistedSize, 100)
+        XCTAssertEqual(folder.children.reduce(0) { $0 + $1.size } + folder.unlistedSize, folder.size)
+        XCTAssertEqual(DirectoryNode(url: URL(fileURLWithPath: "/y"), size: 5, fileCount: 1).unlistedSize, 5)
+    }
 }
