@@ -60,6 +60,8 @@ struct DownloadsView: View {
     let reviewCleanup: () -> Void
     let reveal: (URL) -> Void
     let quickLook: (URL) -> Void
+    /// Reports which files the filters and search show, so review covers only those.
+    var reportVisibleFileIDs: (Set<UUID>) -> Void = { _ in }
 
     @State private var ageFilter: DownloadsAgeFilter = .any
     @State private var sizeFilter: DownloadsSizeFilter = .any
@@ -86,11 +88,25 @@ struct DownloadsView: View {
         }
     }
 
+    private var visibleFileIDs: Set<UUID> {
+        Set(visibleGroups.flatMap { $0.files.map(\.id) })
+    }
+
+    /// The size of the selected files the filters show; only these are reviewed.
     private var selectedSize: Int64 {
-        guard let analysis else { return 0 }
-        return analysis.allFiles
-            .filter { selectedFileIDs.contains($0.id) }
+        let visible = visibleFileIDs
+        return visibleGroups
+            .flatMap(\.files)
+            .filter { visible.contains($0.id) && selectedFileIDs.contains($0.id) }
             .reduce(0) { $0 + $1.size }
+    }
+
+    private var hiddenSelectionCount: Int {
+        guard let analysis else { return 0 }
+        let visible = visibleFileIDs
+        return analysis.allFiles.filter {
+            selectedFileIDs.contains($0.id) && !visible.contains($0.id)
+        }.count
     }
 
     var body: some View {
@@ -161,8 +177,11 @@ struct DownloadsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .diskSweepFocusSearch)) { _ in
             isSearchFocused = true
         }
+        .onChange(of: visibleFileIDs, initial: true) { _, visible in
+            reportVisibleFileIDs(visible)
+        }
         .safeAreaInset(edge: .bottom) {
-            if selectedSize > 0 {
+            if selectedSize > 0 || hiddenSelectionCount > 0 {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("User files selected")
@@ -170,11 +189,21 @@ struct DownloadsView: View {
                         Text("\(FileSizeFormatter.string(fromByteCount: selectedSize)) — Move to Trash recommended")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if hiddenSelectionCount > 0 {
+                            Label(
+                                "\(hiddenSelectionCount) selected file\(hiddenSelectionCount == 1 ? "" : "s") hidden by filters",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .help("Hidden files aren't reviewed or cleaned. Clear the filters or search to include them.")
+                        }
                     }
                     Spacer()
                     Button("Review Selected Files", action: reviewCleanup)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
+                        .disabled(selectedSize == 0)
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)

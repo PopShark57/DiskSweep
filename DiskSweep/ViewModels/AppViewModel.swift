@@ -28,6 +28,9 @@ final class AppViewModel {
         didSet { rebuildDownloadCleanupItems() }
     }
     var selectedDownloadFileIDs: Set<UUID> = []
+    /// The Downloads files the Downloads screen's filters and search currently show, as
+    /// reported by that screen. `nil` until it reports, which means no filter is applied.
+    var downloadsVisibleFileIDs: Set<UUID>?
     var largeFiles: [FileItem] = []
     var largeFileThreshold: Int64 = LargeFileAnalyzer.defaultThreshold
     var selectedLargeFileID: UUID?
@@ -139,10 +142,19 @@ final class AppViewModel {
                 .filter { selectedCleanupItemIDs.contains($0.id) }
         case .downloads:
             guard let downloadsAnalysis else { return [] }
+            // Selected files that filters or search hide are never reviewed or cleaned.
+            let reviewable = downloadsVisibleFileIDs.map { selectedDownloadFileIDs.intersection($0) }
+                ?? selectedDownloadFileIDs
             return downloadsAnalysis.allFiles
-                .filter { selectedDownloadFileIDs.contains($0.id) }
+                .filter { reviewable.contains($0.id) }
                 .compactMap { downloadCleanupItems[$0.id] }
         }
+    }
+
+    /// Selected Downloads files that the current filters or search hide.
+    var hiddenSelectedDownloadCount: Int {
+        guard let downloadsVisibleFileIDs else { return 0 }
+        return selectedDownloadFileIDs.subtracting(downloadsVisibleFileIDs).count
     }
 
     func startup() async {
@@ -570,6 +582,7 @@ final class AppViewModel {
     private func rebuildDownloadCleanupItems() {
         snapshots.replace(providerID: DownloadsProvider.providerID, snapshots: [:])
         downloadCleanupItems = [:]
+        downloadsVisibleFileIDs = nil
         guard let downloadsAnalysis,
               let provider = providers.first(where: { $0.id == DownloadsProvider.providerID })
                 as? DownloadsProvider else {

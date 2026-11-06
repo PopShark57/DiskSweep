@@ -255,6 +255,26 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(model.selectedDownloadFileIDs, [installer.id])
     }
 
+    func testHiddenDownloadsSelectionIsNotReviewedOrCleaned() async throws {
+        let spy = SpyCleanupEngine()
+        let model = try await makeScopedModel(spy: spy)
+        let files = try XCTUnwrap(model.downloadsAnalysis?.allFiles)
+        XCTAssertEqual(files.count, 2)
+        model.selectedDownloadFileIDs = Set(files.map(\.id))
+        let visible = files[0]
+
+        // The Downloads screen reports that a filter hides the second file.
+        model.downloadsVisibleFileIDs = [visible.id]
+        XCTAssertEqual(model.hiddenSelectedDownloadCount, 1)
+        XCTAssertEqual(model.cleanupItems(in: .downloads).map(\.id), [visible.id])
+
+        model.requestCleanupReview(scope: .downloads)
+        model.performCleanup(disposition: .trash)
+        await model.waitForCleanup()
+        let calls = await spy.cleanedIDs
+        XCTAssertEqual(calls, [[visible.id]])
+    }
+
     // MARK: - Helpers
 
     func makeModel(

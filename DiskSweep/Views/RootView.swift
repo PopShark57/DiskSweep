@@ -181,7 +181,8 @@ struct RootView: View {
                 cancel: model.cancelAnalysis,
                 reviewCleanup: { model.requestCleanupReview(scope: .downloads) },
                 reveal: model.revealInFinder,
-                quickLook: model.quickLook
+                quickLook: model.quickLook,
+                reportVisibleFileIDs: { model.downloadsVisibleFileIDs = $0 }
             )
 
         case .trash:
