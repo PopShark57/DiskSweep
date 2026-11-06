@@ -37,7 +37,7 @@ enum ProjectArtifactRules {
 
     /// Nested names that may appear inside a recognized artifact even though DiskSweep
     /// normally refuses to remove a folder that contains them.
-    static let permittedNestedNames: Set<String> = ["node_modules"]
+    static var permittedNestedNames: Set<String> { CleanupLocation.projectArtifacts.permittedNestedNames }
 
     static func kind(ofDirectory url: URL) -> ProjectArtifactKind? {
         guard (try? SafetyValidator.captureIdentity(at: url))?.kind == .directory else {

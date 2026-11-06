@@ -107,6 +107,8 @@ enum ProviderSupport {
                             exclusions: context.exclusions,
                             includeHiddenFiles: true,
                             skipPackages: false,
+                            excludedNames: FileSystemSafetyPolicy.excludedNames
+                                .subtracting(location.permittedNestedNames),
                             batchSize: 256
                         ) { update in
                             await progress(ScanProgress(

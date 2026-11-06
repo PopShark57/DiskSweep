@@ -136,6 +136,29 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         }
     }
 
+    /// Folder names that DiskSweep's safety policy normally refuses inside a cleanup target
+    /// (see `FileSystemSafetyPolicy.excludedNames`) but that are expected inside this
+    /// location's items. The scan-time sizer and the cleanup engine both read this, so an item
+    /// that is deletable at scan time is also accepted at cleanup time.
+    ///
+    /// The `.git` rule protects user repositories. A repository can't legitimately live inside
+    /// DerivedData (Xcode clones Swift package dependencies into `SourcePackages/checkouts`)
+    /// or inside a package manager's checkout cache (Cargo Git checkouts, CocoaPods spec
+    /// repos), so those locations accept `.git`. `node_modules` stays refused everywhere
+    /// except project artifacts and old IDE versions.
+    var permittedNestedNames: Set<String> {
+        switch self {
+        case .xcodeDerivedData, .developerToolCaches:
+            [".git"]
+        case .projectArtifacts:
+            ["node_modules"]
+        case .staleIDEVersions:
+            ["node_modules", ".git"]
+        default:
+            []
+        }
+    }
+
     /// Locations whose items move to the Trash unless the person chooses permanent deletion,
     /// because they may hold something that cannot be downloaded or rebuilt.
     var defaultsToTrash: Bool {

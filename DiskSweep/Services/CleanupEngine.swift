@@ -109,7 +109,7 @@ actor CleanupEngine {
                 for: item,
                 requested: disposition
             )
-            let permittedNestedNames = Self.permittedNestedNames(for: item.location)
+            let permittedNestedNames = item.location.permittedNestedNames
             let scanSnapshot = snapshots.snapshot(
                 providerID: item.providerID,
                 itemID: item.id
@@ -234,14 +234,6 @@ actor CleanupEngine {
             return requested ?? .trash
         }
         return .permanent
-    }
-
-    private static func permittedNestedNames(for location: CleanupLocation) -> Set<String> {
-        switch location {
-        case .projectArtifacts: ProjectArtifactRules.permittedNestedNames
-        case .staleIDEVersions: StaleIDEVersionRules.permittedNestedNames
-        default: []
-        }
     }
 
     /// Locations chosen by rules rather than by a fixed folder repeat those rules right before

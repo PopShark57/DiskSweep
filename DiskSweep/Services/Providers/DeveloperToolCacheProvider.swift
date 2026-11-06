@@ -45,7 +45,13 @@ struct DeveloperToolCacheProvider: CleanupProvider {
         CacheDirectory(".cache/pre-commit", tool: "pre-commit"),
         CacheDirectory(".cargo/registry/cache", tool: "Cargo", label: "Cargo crates"),
         CacheDirectory(".cargo/registry/src", tool: "Cargo", label: "Cargo crate sources"),
-        CacheDirectory(".cargo/git/checkouts", tool: "Cargo", label: "Cargo Git checkouts"),
+        // Git clones; offered for review only, since a folder there could hold local commits.
+        CacheDirectory(
+            ".cargo/git/checkouts",
+            tool: "Cargo",
+            label: "Cargo Git checkouts",
+            needsReview: true
+        ),
         CacheDirectory(".gradle/caches", tool: "Gradle", label: "Gradle caches"),
         CacheDirectory(".gradle/wrapper/dists", tool: "Gradle", label: "Gradle distributions"),
         CacheDirectory(".cocoapods/repos", tool: "CocoaPods"),

@@ -198,6 +198,114 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
         XCTAssertTrue(exists("Library/Android/sdk/system-images/android-30/google_apis/x86"))
     }
 
+    // MARK: - Nested .git in DerivedData and tool caches (D1)
+
+    func testDerivedDataWithSwiftPackageCheckoutIsDeletableAndCleaned() async throws {
+        let base = "Library/Developer/Xcode/DerivedData/App-abcdef"
+        try write("\(base)/Build/Products/Debug/App.app/Contents/MacOS/App", byteCount: 64)
+        try write("\(base)/SourcePackages/checkouts/Pkg/.git/HEAD", contents: "ref: refs/heads/main")
+        try write("\(base)/SourcePackages/checkouts/Pkg/Sources/Pkg.swift")
+
+        let provider = XcodeDerivedDataProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "App-abcdef" })
+        XCTAssertTrue(item.isDeletable, item.explanation)
+        XCTAssertTrue(item.isSelectedByDefault)
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists(base))
+        XCTAssertTrue(exists("Library/Developer/Xcode/DerivedData"))
+    }
+
+    func testCargoGitCheckoutIsDeletableReviewOnlyAndCleaned() async throws {
+        try write(".cargo/git/checkouts/foo-1234/abc1234/.git/HEAD", contents: "ref: refs/heads/main")
+        try write(".cargo/git/checkouts/foo-1234/abc1234/src/lib.rs")
+
+        let provider = DeveloperToolCacheProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "foo-1234" })
+        XCTAssertTrue(item.isDeletable, item.explanation)
+        XCTAssertFalse(item.isSelectedByDefault, "Cargo Git checkouts need review")
+        XCTAssertEqual(item.risk, .reviewRecommended)
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists(".cargo/git/checkouts/foo-1234"))
+    }
+
+    /// Negative: User Caches keeps refusing folders that contain a repository.
+    func testUserCacheFolderWithGitStaysRefused() async throws {
+        try write("Library/Caches/com.example/.git/HEAD", contents: "ref: refs/heads/main")
+        try write("Library/Caches/com.example/data.bin")
+
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "com.example" })
+        XCTAssertFalse(item.isDeletable)
+
+        try await assertEngineRefusesForgedDeletableCopy(of: item, provider: provider)
+        XCTAssertTrue(exists("Library/Caches/com.example/.git/HEAD"))
+    }
+
+    /// Negative: DerivedData accepts `.git` only; a `node_modules` inside is still refused.
+    func testDerivedDataFolderWithNodeModulesStaysRefused() async throws {
+        let base = "Library/Developer/Xcode/DerivedData/Web-abcdef"
+        try write("\(base)/Build/out.o")
+        try write("\(base)/SourcePackages/checkouts/Pkg/node_modules/left-pad/index.js")
+
+        let provider = XcodeDerivedDataProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "Web-abcdef" })
+        XCTAssertFalse(item.isDeletable)
+
+        try await assertEngineRefusesForgedDeletableCopy(of: item, provider: provider)
+        XCTAssertTrue(exists("\(base)/SourcePackages/checkouts/Pkg/node_modules/left-pad/index.js"))
+    }
+
+    /// Builds a deletable copy of a refused item with a valid scan snapshot, as if the scan had
+    /// been wrong, and checks that the engine's own content check still refuses it.
+    private func assertEngineRefusesForgedDeletableCopy(
+        of item: CleanupItem,
+        provider: any CleanupProvider,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let forged = CleanupItem(
+            providerID: item.providerID,
+            location: item.location,
+            name: item.name,
+            url: item.url,
+            size: item.size,
+            fileCount: item.fileCount,
+            kind: item.kind,
+            modifiedAt: item.modifiedAt,
+            risk: item.risk,
+            explanation: item.explanation,
+            isDeletable: true
+        )
+        snapshots.record(
+            providerID: item.providerID,
+            itemID: forged.id,
+            identity: try SafetyValidator.captureIdentity(at: item.url)
+        )
+        let result = await engine.clean([forged], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty, file: file, line: line)
+        XCTAssertEqual(result.failures.count, 1, file: file, line: line)
+        XCTAssertTrue(
+            result.failures.first?.reason.contains("excluded from cleanup") == true,
+            "Expected the content check to refuse it: \(result.failures.map(\.reason))",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: item.url.path),
+            "The refused folder must still exist",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Package manager caches
 
     func testFindsPackageManagerCachesAndReviewsUV() async throws {
