@@ -177,7 +177,14 @@ struct DuplicateAnalyzer: Sendable {
                     try Task.checkCancellation()
                     var cryptographicGroups: [String: [FileItem]] = [:]
 
-                    for file in sampleMatches {
+                    // Two candidates are compared byte for byte directly; hashing them first
+                    // would read both files twice. Larger groups still hash, so each file is
+                    // compared only against files with the same digest.
+                    if sampleMatches.count == 2 {
+                        cryptographicGroups[Self.pairFingerprint(sampleMatches)] = sampleMatches
+                    }
+
+                    for file in sampleMatches where sampleMatches.count > 2 {
                         try Task.checkCancellation()
                         do {
                             let fingerprint = try Self.sha256(
@@ -372,6 +379,13 @@ struct DuplicateAnalyzer: Sendable {
         }
 
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Identifies a byte-compared pair. `DuplicateGroup.fingerprint` is informational only.
+    private static func pairFingerprint(_ files: [FileItem]) -> String {
+        let joined = files.map(\.url.path).sorted().joined(separator: "\u{0}")
+        let digest = SHA256.hash(data: Data(joined.utf8))
+        return "pair-" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func confirmedClusters(

@@ -29,8 +29,36 @@ final class DuplicateAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.reclaimableSize, Int64(duplicateData.count))
         XCTAssertEqual(result.diagnostics.sizeCandidateFiles, 3)
         XCTAssertEqual(result.diagnostics.sampledFiles, 3)
-        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 2)
+        // 5.4: a sample-matched pair is compared byte for byte without hashing first.
+        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 0)
         XCTAssertEqual(result.diagnostics.byteForByteComparisons, 1)
+    }
+
+    /// 5.4: groups of three or more still hash before the byte-for-byte check, and a pair
+    /// whose bytes differ after matching samples is not reported.
+    func testTriplesStillHashAndPairsAreStillConfirmedByBytes() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 0x33, count: 64 * 1_024)
+        try temporary.file("One/a.bin", data: data)
+        try temporary.file("Two/b.bin", data: data)
+        try temporary.file("Three/c.bin", data: data)
+        // Same size and same sampled bytes (start, middle, end), different in between.
+        var nearCopy = Data(repeating: 0x44, count: 48 * 1_024)
+        let nearCopyOriginal = nearCopy
+        nearCopy[20_000] = 0x45
+        try temporary.file("Four/d.bin", data: nearCopyOriginal)
+        try temporary.file("Five/e.bin", data: nearCopy)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer(sampleByteCount: 512).scan(
+            root: temporary.url,
+            context: context
+        )
+
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertEqual(Set(result.groups[0].files.map(\.name)), ["a.bin", "b.bin", "c.bin"])
+        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 3)
+        XCTAssertEqual(result.diagnostics.byteForByteComparisons, 2 + 1)
     }
 
     func testMatchingNamesAndSizesAreNotEnough() async throws {
