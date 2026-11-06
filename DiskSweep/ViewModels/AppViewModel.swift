@@ -20,6 +20,8 @@ final class AppViewModel {
     var lastScanWasCancelled = false
     var isCleaning = false
     var showsCleanupReview = false
+    /// What the open review sheet covers, and what Clean will remove.
+    var pendingReviewScope: CleanupScope = .locations([])
     var cleanupResult: CleanupResult?
 
     var downloadsAnalysis: DownloadsAnalysis? {
@@ -44,7 +46,7 @@ final class AppViewModel {
     @ObservationIgnored let homeDirectory: URL
     @ObservationIgnored private let standardProviders: [any CleanupProvider]
     @ObservationIgnored private let diskService: DiskService
-    @ObservationIgnored private let cleanupEngine: CleanupEngine
+    @ObservationIgnored private let cleanupEngine: any CleanupPerforming
     /// Shared by every scan context and the cleanup engine, so cleanup finds the identities
     /// the scan recorded.
     @ObservationIgnored let snapshots: CleanupSnapshotRegistry
@@ -74,7 +76,7 @@ final class AppViewModel {
         permissions: PermissionManager = PermissionManager(),
         diskService: DiskService = DiskService(),
         snapshots: CleanupSnapshotRegistry = CleanupSnapshotRegistry(),
-        cleanupEngine: CleanupEngine? = nil,
+        cleanupEngine: (any CleanupPerforming)? = nil,
         finderService: FinderService = .shared
     ) {
         let home = homeDirectory.standardizedFileURL
@@ -127,9 +129,19 @@ final class AppViewModel {
         return categoryItems + downloadItems
     }
 
-    var selectedCleanupSize: Int64 {
-        selectedCleanupItems.reduce(0) { partial, item in
-            addingClamped(partial, item.size)
+    /// The selected items a review of `scope` would clean.
+    func cleanupItems(in scope: CleanupScope) -> [CleanupItem] {
+        switch scope {
+        case let .locations(locations):
+            return categories
+                .filter { locations.contains($0.location) }
+                .flatMap(\.items)
+                .filter { selectedCleanupItemIDs.contains($0.id) }
+        case .downloads:
+            guard let downloadsAnalysis else { return [] }
+            return downloadsAnalysis.allFiles
+                .filter { selectedDownloadFileIDs.contains($0.id) }
+                .compactMap { downloadCleanupItems[$0.id] }
         }
     }
 
@@ -256,9 +268,12 @@ final class AppViewModel {
         lastScanWasCancelled = true
     }
 
-    func requestCleanupReview() {
-        let items = selectedCleanupItems
+    /// Opens the review sheet for exactly the items `scope` covers. Without confirmation and
+    /// with only safe items, it cleans that same scope directly.
+    func requestCleanupReview(scope: CleanupScope) {
+        let items = cleanupItems(in: scope)
         guard !items.isEmpty else { return }
+        pendingReviewScope = scope
         let containsSensitiveItems = items.contains { $0.risk != .safe || $0.location == .trash }
 
         if settings.general.confirmBeforeCleanup || containsSensitiveItems {
@@ -268,9 +283,11 @@ final class AppViewModel {
         }
     }
 
+    /// Cleans the items in `pendingReviewScope`, the same items the review sheet lists.
     func performCleanup(disposition: CleanupDisposition?) {
         guard !isCleaning else { return }
-        let items = selectedCleanupItems
+        let scope = pendingReviewScope
+        let items = cleanupItems(in: scope)
         guard !items.isEmpty else { return }
 
         isCleaning = true
@@ -291,8 +308,7 @@ final class AppViewModel {
             isCleaning = false
             showsCleanupReview = false
             cleanupResult = result
-            selectedCleanupItemIDs.removeAll()
-            selectedDownloadFileIDs.removeAll()
+            clearSelection(in: scope)
             cleanupTask = nil
 
             if settings.privacy.keepLocalCleanupHistory, !result.cleanedItems.isEmpty {
@@ -303,6 +319,19 @@ final class AppViewModel {
                 }
             }
             await refreshDiskStatistics()
+        }
+    }
+
+    /// Clears only the selections a cleanup covered; other screens keep theirs.
+    private func clearSelection(in scope: CleanupScope) {
+        switch scope {
+        case let .locations(locations):
+            let covered = Set(
+                categories.filter { locations.contains($0.location) }.flatMap(\.items).map(\.id)
+            )
+            selectedCleanupItemIDs.subtract(covered)
+        case .downloads:
+            selectedDownloadFileIDs.removeAll()
         }
     }
 

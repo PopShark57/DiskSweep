@@ -163,10 +163,103 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(model.snapshots.count(providerID: DownloadsProvider.providerID), 3)
     }
 
+    // MARK: - Scoped review (D4)
+
+    /// Two preselected safe categories (caches and DerivedData) plus Downloads files.
+    private func makeScopedModel(
+        spy: SpyCleanupEngine,
+        configure: (SettingsStore) -> Void = { _ in }
+    ) async throws -> AppViewModel {
+        let home = sandbox.appendingPathComponent("Home", isDirectory: true)
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        for name in ["installer.dmg", "other.zip"] {
+            try Data(repeating: 1, count: 64).write(to: downloads.appendingPathComponent(name))
+        }
+        let model = makeModel(
+            providers: [
+                FakeCleanupProvider(
+                    id: "fake-caches",
+                    location: .userCaches,
+                    items: [.init(name: "a.cache", size: 100)]
+                ),
+                FakeCleanupProvider(
+                    id: "fake-derived-data",
+                    location: .xcodeDerivedData,
+                    items: [.init(name: "App-abc", size: 1_000)]
+                ),
+                DownloadsProvider(homeDirectory: home)
+            ],
+            engine: spy,
+            configure: configure
+        )
+        model.startCleanupScan()
+        await model.waitForScan()
+        model.startDownloadsAnalysis()
+        await model.waitForAnalysis()
+        XCTAssertEqual(model.selectedCleanupItemIDs.count, 2, "Both safe items are preselected")
+        return model
+    }
+
+    func testDownloadsReviewCleansOnlyTheSelectedDownload() async throws {
+        let spy = SpyCleanupEngine()
+        let model = try await makeScopedModel(spy: spy)
+        let installer = try XCTUnwrap(model.downloadsAnalysis?.allFiles.first { $0.name == "installer.dmg" })
+        model.selectedDownloadFileIDs = [installer.id]
+
+        model.requestCleanupReview(scope: .downloads)
+        XCTAssertTrue(model.showsCleanupReview)
+        XCTAssertEqual(model.cleanupItems(in: model.pendingReviewScope).map(\.id), [installer.id])
+
+        model.performCleanup(disposition: .trash)
+        await model.waitForCleanup()
+
+        let calls = await spy.cleanedIDs
+        XCTAssertEqual(calls, [[installer.id]])
+        XCTAssertEqual(model.selectedCleanupItemIDs.count, 2, "Cache selections are kept")
+        XCTAssertTrue(model.selectedDownloadFileIDs.isEmpty)
+    }
+
+    func testApplicationCachesReviewExcludesSelectedDeveloperItems() async throws {
+        let spy = SpyCleanupEngine()
+        let model = try await makeScopedModel(spy: spy)
+        let cacheIDs = Set(model.categories.first { $0.location == .userCaches }!.items.map(\.id))
+        let developerIDs = Set(model.categories.first { $0.location == .xcodeDerivedData }!.items.map(\.id))
+
+        model.requestCleanupReview(scope: .locations(CleanupScope.applicationCacheLocations))
+        XCTAssertEqual(Set(model.cleanupItems(in: model.pendingReviewScope).map(\.id)), cacheIDs)
+
+        model.performCleanup(disposition: nil)
+        await model.waitForCleanup()
+
+        let calls = await spy.cleanedIDs
+        XCTAssertEqual(calls.map(Set.init), [cacheIDs])
+        XCTAssertEqual(model.selectedCleanupItemIDs, developerIDs, "Developer selections are kept")
+    }
+
+    func testDirectCleanupWithoutConfirmationUsesTheSameScope() async throws {
+        let spy = SpyCleanupEngine()
+        let model = try await makeScopedModel(spy: spy) { settings in
+            settings.general.confirmBeforeCleanup = false
+        }
+        let developerIDs = Set(model.categories.first { $0.location == .xcodeDerivedData }!.items.map(\.id))
+        let installer = try XCTUnwrap(model.downloadsAnalysis?.allFiles.first)
+        model.selectedDownloadFileIDs = [installer.id]
+
+        model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations))
+        XCTAssertFalse(model.showsCleanupReview, "All-safe selections skip the sheet when allowed")
+        await model.waitForCleanup()
+
+        let calls = await spy.cleanedIDs
+        XCTAssertEqual(calls.map(Set.init), [developerIDs])
+        XCTAssertEqual(model.selectedDownloadFileIDs, [installer.id])
+    }
+
     // MARK: - Helpers
 
     func makeModel(
         providers: [any CleanupProvider],
+        engine: (any CleanupPerforming)? = nil,
         configure: (SettingsStore) -> Void = { _ in }
     ) -> AppViewModel {
         let settings = SettingsStore(userDefaults: UserDefaults(suiteName: defaultsSuiteName)!)
@@ -185,7 +278,7 @@ final class AppViewModelTests: XCTestCase {
             ),
             permissions: PermissionManager(homeDirectory: home),
             snapshots: snapshots,
-            cleanupEngine: CleanupEngine(
+            cleanupEngine: engine ?? CleanupEngine(
                 safetyValidator: SafetyValidator(homeDirectory: home, temporaryDirectory: sandbox),
                 snapshots: snapshots
             )

@@ -42,6 +42,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 
 ### Cleanup and local state
 
+- Each screen's Review button reviews and cleans exactly what that screen's footer counted: Overview and Smart Cleanup cover every scanned category, Application Caches and Developer Files cover only their own categories, Trash covers only Trash, and Downloads covers only the Downloads files you selected. Selections on other screens are kept.
 - A centralized cleanup engine that accepts provider-specific authorizations and uses `FileManager` for Trash or permanent removal.
 - A final identity and boundary revalidation immediately before each filesystem mutation.
 - Cleanup results and history distinguish bytes moved to Trash from capacity actually recovered; same-volume Trash moves are never credited as free space.

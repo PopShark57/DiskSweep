@@ -15,6 +15,7 @@
 		102079302782C3B56B095927 /* LargeFileAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263F2D18EA3A40B1E637AA3C /* LargeFileAnalyzer.swift */; };
 		113AF11F06CAF4714610F739 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D62BA69BEBA6771736F041D2 /* SettingsStoreTests.swift */; };
 		12F9C89C008A8FDE9F4055F1 /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A50F7AA08BAC5F28C0E4DC /* FinderService.swift */; };
+		15AD2E380E3D745878344D20 /* CleanupScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F471795CEC4A31D575AB02 /* CleanupScope.swift */; };
 		16B88B1749C8DF4F693BB9E6 /* FakeCleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 143FAD8F96BC2FBD61A37044 /* FakeCleanupProvider.swift */; };
 		19B0A25E9EDF5146B061BC67 /* BrowserCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30451ADC4D65EE7B36891FD1 /* BrowserCacheProvider.swift */; };
 		1D86710E48F0A4F327671480 /* CleanupProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B2D4CD1F6B319DA8B25749 /* CleanupProvider.swift */; };
@@ -79,6 +80,7 @@
 		CC5B26B88ACC18B1B261E0CB /* HomebrewCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519E735A8152DC3D6D6FF6AE /* HomebrewCacheProvider.swift */; };
 		CC7B872710D7D69B9BA34E08 /* AndroidSystemImagesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB433A6AE0644B28C4DDFC98 /* AndroidSystemImagesProvider.swift */; };
 		CE84FD5C51F8AB49BBDC1011 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 001899A00A422ED9B331F81B /* DesignSystem.swift */; };
+		D12C4F9F509B505380DDC00B /* SpyCleanupEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E69EB295A506861950301A /* SpyCleanupEngine.swift */; };
 		D28663D5B63B22905D9BD7AC /* CleanupReviewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E24EE3C6C708FE04A764C17 /* CleanupReviewModelTests.swift */; };
 		D2EBB630281E0C6D914683AB /* CleanupCompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F3AB15B2C66BB5D0B6081F /* CleanupCompleteView.swift */; };
 		D3B0662A89978DB3ECA553F1 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD847365A2191C38100DFF60 /* DownloadsView.swift */; };
@@ -177,6 +179,7 @@
 		BBD7DBB554F314D7753C3708 /* DirectorySizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectorySizer.swift; sourceTree = "<group>"; };
 		BD07BDD95C44F442B8416540 /* SafetyScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyScannerTests.swift; sourceTree = "<group>"; };
 		BD847365A2191C38100DFF60 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+		C0F471795CEC4A31D575AB02 /* CleanupScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupScope.swift; sourceTree = "<group>"; };
 		C2482816FE2115D26E1514BE /* ScanCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCancellationTests.swift; sourceTree = "<group>"; };
 		C75823D2C3CC63D99A6252A6 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		C90136DD98427F68CE6F2390 /* LargeFoldersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFoldersView.swift; sourceTree = "<group>"; };
@@ -185,6 +188,7 @@
 		D0CD2AC480138C99D0EA5895 /* FileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileItem.swift; sourceTree = "<group>"; };
 		D1A0EA034555E8508EF26446 /* AppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModelTests.swift; sourceTree = "<group>"; };
 		D362C38CD30618C5B51FEB8D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D3E69EB295A506861950301A /* SpyCleanupEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyCleanupEngine.swift; sourceTree = "<group>"; };
 		D62BA69BEBA6771736F041D2 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		DF4F81307FF49CC726E3E71F /* CleanupRisk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupRisk.swift; sourceTree = "<group>"; };
 		E14AEF53CFE0A266E3DB3BF1 /* TrashCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashCleanupView.swift; sourceTree = "<group>"; };
@@ -364,6 +368,7 @@
 				AE25E87A2682739050970954 /* CleanupLocation.swift */,
 				26CB1157DB5CE2AEE101E64E /* CleanupResult.swift */,
 				DF4F81307FF49CC726E3E71F /* CleanupRisk.swift */,
+				C0F471795CEC4A31D575AB02 /* CleanupScope.swift */,
 				FA005134DA143EBD881871E6 /* DiskStatistics.swift */,
 				D0CD2AC480138C99D0EA5895 /* FileItem.swift */,
 				B6C075B2E6ADFA601FC63B9F /* LossyCodable.swift */,
@@ -423,6 +428,7 @@
 			isa = PBXGroup;
 			children = (
 				143FAD8F96BC2FBD61A37044 /* FakeCleanupProvider.swift */,
+				D3E69EB295A506861950301A /* SpyCleanupEngine.swift */,
 			);
 			path = Fakes;
 			sourceTree = "<group>";
@@ -535,6 +541,7 @@
 				470BEA4EBFE3919726C52433 /* CleanupResult.swift in Sources */,
 				7DBFBC95EAA4325D1BC0BC9F /* CleanupReviewView.swift in Sources */,
 				3FE19F365066BD1F07AECFA2 /* CleanupRisk.swift in Sources */,
+				15AD2E380E3D745878344D20 /* CleanupScope.swift in Sources */,
 				9008F442AA78BE767F01EAB4 /* CleanupSnapshotRegistry.swift in Sources */,
 				481AD0D0D5D345E8825E60E6 /* DebugLaunchEnvironment.swift in Sources */,
 				CE84FD5C51F8AB49BBDC1011 /* DesignSystem.swift in Sources */,
@@ -612,6 +619,7 @@
 				DAADC469CA8AE195C89C2A35 /* ScanCancellationTests.swift in Sources */,
 				8120356CE84097874EB4655C /* ScanIssueMappingTests.swift in Sources */,
 				113AF11F06CAF4714610F739 /* SettingsStoreTests.swift in Sources */,
+				D12C4F9F509B505380DDC00B /* SpyCleanupEngine.swift in Sources */,
 				E7DCBFA04C384AB2753736BF /* URLContainmentTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -29,7 +29,7 @@ struct RootView: View {
         )
         .sheet(isPresented: $model.showsCleanupReview) {
             CleanupReviewView(
-                items: model.selectedCleanupItems,
+                items: model.cleanupItems(in: model.pendingReviewScope),
                 isCleaning: model.isCleaning,
                 preferredUserFileDisposition: model.preferredUserFileDisposition,
                 clean: model.performCleanup(disposition:)
@@ -131,7 +131,7 @@ struct RootView: View {
                 scanWasCancelled: model.lastScanWasCancelled,
                 scan: model.startCleanupScan,
                 cancelScan: model.cancelCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) }
             )
 
         case .smartCleanup:
@@ -143,7 +143,7 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) }
             )
 
         case .applicationCaches:
@@ -152,13 +152,12 @@ struct RootView: View {
                 subtitle: "Disposable caches only—never profiles, sessions, preferences, cookies, or application support data.",
                 symbol: "app.badge",
                 categories: model.categories.filter {
-                    [.userCaches, .applicationCaches, .browserCaches, .electronAppCaches]
-                        .contains($0.location)
+                    CleanupScope.applicationCacheLocations.contains($0.location)
                 },
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.applicationCacheLocations)) }
             )
 
         case .developerFiles:
@@ -170,7 +169,7 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations)) }
             )
 
         case .downloads:
@@ -180,7 +179,7 @@ struct RootView: View {
                 isScanning: model.isAnalyzing(.downloads),
                 scan: model.startDownloadsAnalysis,
                 cancel: model.cancelAnalysis,
-                reviewCleanup: model.requestCleanupReview,
+                reviewCleanup: { model.requestCleanupReview(scope: .downloads) },
                 reveal: model.revealInFinder,
                 quickLook: model.quickLook
             )
@@ -191,7 +190,7 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations([.trash])) }
             )
 
         case .largeFiles:

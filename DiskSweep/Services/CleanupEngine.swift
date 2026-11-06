@@ -28,7 +28,18 @@ struct CleanupAuthorization: Sendable {
     }
 }
 
-actor CleanupEngine {
+/// The cleanup operation the view model depends on, so tests can observe exactly which items
+/// a review would clean without touching the filesystem.
+protocol CleanupPerforming: Sendable {
+    func clean(
+        _ items: [CleanupItem],
+        providers: [any CleanupProvider],
+        disposition: CleanupDisposition?,
+        exclusions: [URL]
+    ) async -> CleanupResult
+}
+
+actor CleanupEngine: CleanupPerforming {
     private let safetyValidator: SafetyValidator
     private let diskService: DiskService
     private let snapshots: CleanupSnapshotRegistry
