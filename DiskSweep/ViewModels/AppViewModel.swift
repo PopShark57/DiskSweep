@@ -61,6 +61,14 @@ final class AppViewModel {
     /// Incremented whenever a scan starts or is cancelled. A scan task only changes state
     /// while its generation is current, so a cancelled scan can't touch a newer one.
     @ObservationIgnored private var scanGeneration = 0
+    /// How many providers scan at the same time. Set to 1 to scan one after another, for
+    /// example on spinning or network disks.
+    static let maximumConcurrentProviderScans = 3
+    @ObservationIgnored private var completedProviderCount = 0
+    @ObservationIgnored private var accumulatedScanFiles = 0
+    @ObservationIgnored private var accumulatedScanBytes: Int64 = 0
+    /// The latest progress of each provider still scanning, summed into the scan's progress.
+    @ObservationIgnored private var inFlightProgress: [String: ScanProgress] = [:]
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
     @ObservationIgnored private var retiredAnalysisTask: Task<Void, Never>?
     @ObservationIgnored private var analysisGeneration = 0
@@ -204,70 +212,56 @@ final class AppViewModel {
             categories = []
             selectedCleanupItemIDs = []
 
-            var completed = 0
-            var accumulatedFiles = 0
-            var accumulatedBytes: Int64 = 0
+            completedProviderCount = 0
+            accumulatedScanFiles = 0
+            accumulatedScanBytes = 0
+            inFlightProgress = [:]
+            let totalProviders = scanProviders.count
+            let context = makeScanContext()
 
-            for provider in scanProviders {
-                if Task.isCancelled { break }
-                let priorFiles = accumulatedFiles
-                let priorBytes = accumulatedBytes
-                let priorCompleted = completed
-                let totalProviders = scanProviders.count
+            // A few providers run at once; most walk separate folder trees, so this mostly
+            // overlaps I/O waits. Results are inserted in category order as they finish.
+            await withTaskGroup(
+                of: (provider: any CleanupProvider, result: ProviderScanResult).self
+            ) { group in
+                var pending = scanProviders[...]
 
-                let signpost = Log.signposter.beginInterval(
-                    "Provider scan",
-                    id: Log.signposter.makeSignpostID(),
-                    "\(provider.id, privacy: .public)"
-                )
-                let result = await provider.scan(context: makeScanContext()) { [weak self] update in
-                    await self?.applyCleanupProgress(
-                        update,
-                        generation: generation,
-                        priorFiles: priorFiles,
-                        priorBytes: priorBytes,
-                        completedProviders: priorCompleted,
-                        totalProviders: totalProviders
-                    )
+                func startNext() {
+                    guard let provider = pending.popFirst() else { return }
+                    let providerID = provider.id
+                    let progress: ScanProgressHandler = { [weak self] update in
+                        await self?.applyCleanupProgress(
+                            update,
+                            providerID: providerID,
+                            generation: generation,
+                            totalProviders: totalProviders
+                        )
+                    }
+                    group.addTask {
+                        let signpost = Log.signposter.beginInterval(
+                            "Provider scan",
+                            id: Log.signposter.makeSignpostID(),
+                            "\(providerID, privacy: .public)"
+                        )
+                        let result = await provider.scan(context: context, progress: progress)
+                        Log.signposter.endInterval("Provider scan", signpost)
+                        return (provider, result)
+                    }
                 }
 
-                Log.signposter.endInterval("Provider scan", signpost)
-                // Every await is a point where this scan may have been cancelled or replaced.
-                guard generation == scanGeneration else { return }
-                if Task.isCancelled { break }
-                let filteredItems = Self.removeProviderOverlaps(
-                    result.items,
-                    ownerProviderID: provider.id,
-                    plan: plan
-                )
-                let category = CleanupCategory(
-                    location: result.location,
-                    items: filteredItems,
-                    issues: result.issues,
-                    scannedAt: Date()
-                )
-                categories.append(category)
-                categories.sort { locationOrder($0.location) < locationOrder($1.location) }
+                for _ in 0..<Self.maximumConcurrentProviderScans { startNext() }
 
-                for item in filteredItems where item.isSelectedByDefault && item.isDeletable {
-                    selectedCleanupItemIDs.insert(item.id)
+                for await (provider, result) in group {
+                    // Every await is a point where this scan may have been cancelled or replaced.
+                    guard generation == scanGeneration, !Task.isCancelled else {
+                        group.cancelAll()
+                        return
+                    }
+                    publish(result, from: provider, plan: plan, totalProviders: totalProviders)
+                    startNext()
+                    await refreshDiskStatistics()
                 }
-                accumulatedFiles += category.fileCount
-                accumulatedBytes = addingClamped(accumulatedBytes, category.totalSize)
-                completed += 1
-                cleanupScanProgress = ScanProgress(
-                    phase: .enumerating,
-                    location: provider.location,
-                    currentPath: plan.roots(of: provider.id).first?.path ?? "",
-                    filesAnalyzed: accumulatedFiles,
-                    bytesFound: accumulatedBytes,
-                    completedProviders: completed,
-                    totalProviders: scanProviders.count
-                )
-                await refreshDiskStatistics()
-                guard generation == scanGeneration else { return }
             }
-
             guard generation == scanGeneration else { return }
             if !Task.isCancelled {
                 lastScanDate = Date()
@@ -550,20 +544,64 @@ final class AppViewModel {
 
     private func applyCleanupProgress(
         _ update: ScanProgress,
+        providerID: String,
         generation: Int,
-        priorFiles: Int,
-        priorBytes: Int64,
-        completedProviders: Int,
         totalProviders: Int
     ) {
         guard generation == scanGeneration, cleanupScanTask != nil else { return }
+        inFlightProgress[providerID] = update
         cleanupScanProgress = ScanProgress(
             phase: update.phase,
             location: update.location,
             currentPath: update.currentPath,
-            filesAnalyzed: priorFiles + update.filesAnalyzed,
-            bytesFound: addingClamped(priorBytes, update.bytesFound),
-            completedProviders: completedProviders,
+            filesAnalyzed: accumulatedScanFiles
+                + inFlightProgress.values.reduce(0) { $0 + $1.filesAnalyzed },
+            bytesFound: inFlightProgress.values.reduce(accumulatedScanBytes) {
+                addingClamped($0, $1.bytesFound)
+            },
+            completedProviders: completedProviderCount,
+            totalProviders: totalProviders
+        )
+    }
+
+    /// Adds one provider's finished result to the scan, in category order.
+    private func publish(
+        _ result: ProviderScanResult,
+        from provider: any CleanupProvider,
+        plan: ScanPlan,
+        totalProviders: Int
+    ) {
+        inFlightProgress[provider.id] = nil
+        let filteredItems = Self.removeProviderOverlaps(
+            result.items,
+            ownerProviderID: provider.id,
+            plan: plan
+        )
+        let category = CleanupCategory(
+            location: result.location,
+            items: filteredItems,
+            issues: result.issues,
+            scannedAt: Date()
+        )
+        categories.append(category)
+        categories.sort { locationOrder($0.location) < locationOrder($1.location) }
+
+        for item in filteredItems where item.isSelectedByDefault && item.isDeletable {
+            selectedCleanupItemIDs.insert(item.id)
+        }
+        accumulatedScanFiles += category.fileCount
+        accumulatedScanBytes = addingClamped(accumulatedScanBytes, category.totalSize)
+        completedProviderCount += 1
+        cleanupScanProgress = ScanProgress(
+            phase: .enumerating,
+            location: provider.location,
+            currentPath: plan.roots(of: provider.id).first?.path ?? "",
+            filesAnalyzed: accumulatedScanFiles
+                + inFlightProgress.values.reduce(0) { $0 + $1.filesAnalyzed },
+            bytesFound: inFlightProgress.values.reduce(accumulatedScanBytes) {
+                addingClamped($0, $1.bytesFound)
+            },
+            completedProviders: completedProviderCount,
             totalProviders: totalProviders
         )
     }

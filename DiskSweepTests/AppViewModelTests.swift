@@ -137,6 +137,68 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(model.analysisProgress)
     }
 
+    // MARK: - Parallel provider scans (P6)
+
+    func testParallelScanKeepsCategoryOrderAndBoundsConcurrency() async {
+        let events = FakeProviderEvents()
+        let specs: [(String, CleanupLocation, Int)] = [
+            ("caches", .userCaches, 250), ("logs", .userLogs, 10), ("temp", .temporaryFiles, 120),
+            ("trash", .trash, 60), ("browser", .browserCaches, 30), ("electron", .electronAppCaches, 90)
+        ]
+        let model = makeModel(providers: specs.map { id, location, delay in
+            FakeCleanupProvider(
+                id: id,
+                location: location,
+                items: [.init(name: "\(id).item", size: 1)],
+                delay: .milliseconds(delay),
+                events: events
+            )
+        })
+
+        model.startCleanupScan()
+        await model.waitForScan()
+
+        let expectedOrder = CleanupLocation.allCases.filter { location in
+            specs.contains { $0.1 == location }
+        }
+        XCTAssertEqual(model.categories.map(\.location), expectedOrder)
+
+        var inFlight = 0
+        var maximum = 0
+        for event in await events.log {
+            inFlight += event.hasPrefix("start:") ? 1 : -1
+            maximum = max(maximum, inFlight)
+        }
+        XCTAssertEqual(maximum, AppViewModel.maximumConcurrentProviderScans)
+        XCTAssertEqual(model.cleanupScanProgress, nil)
+    }
+
+    func testCancellingAParallelScanStopsEveryProvider() async {
+        let events = FakeProviderEvents()
+        let model = makeModel(providers: (0..<4).map { index in
+            FakeCleanupProvider(
+                id: "slow-\(index)",
+                location: [.userCaches, .userLogs, .temporaryFiles, .trash][index],
+                delay: .seconds(30),
+                events: events
+            )
+        })
+
+        model.startCleanupScan()
+        await events.wait(for: "start:slow-0")
+        await events.wait(for: "start:slow-2")
+        let clock = ContinuousClock()
+        let start = clock.now
+        model.cancelCleanupScan()
+        await model.waitForScan()
+
+        XCTAssertLessThan(clock.now - start, .seconds(5), "Cancelled providers must stop promptly")
+        let log = await events.log
+        XCTAssertFalse(log.contains("start:slow-3"), "No new provider starts after cancellation")
+        XCTAssertTrue(model.categories.isEmpty)
+        XCTAssertTrue(model.lastScanWasCancelled)
+    }
+
     // MARK: - Provider overlaps (D7)
 
     func testItemsContainingAnotherProvidersRootAreDropped() async {
