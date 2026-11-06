@@ -15,6 +15,7 @@ struct UserCacheProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent("Library/Caches", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

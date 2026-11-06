@@ -430,6 +430,7 @@ private struct TestDirectoryProvider: CleanupProvider {
     var location: CleanupLocation { .temporaryFiles }
     var allowedRoots: [URL] { [root] }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

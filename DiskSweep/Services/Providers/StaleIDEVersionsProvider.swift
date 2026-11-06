@@ -149,6 +149,7 @@ struct StaleIDEVersionsProvider: CleanupProvider {
         StaleIDEVersionRules.roots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

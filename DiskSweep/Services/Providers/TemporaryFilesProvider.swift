@@ -30,6 +30,7 @@ struct TemporaryFilesProvider: CleanupProvider {
     var location: CleanupLocation { .temporaryFiles }
     var allowedRoots: [URL] { [temporaryDirectory] }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

@@ -30,6 +30,7 @@ struct HomebrewCacheProvider: CleanupProvider {
         return [standard]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

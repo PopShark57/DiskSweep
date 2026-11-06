@@ -18,6 +18,7 @@ struct XcodeDerivedDataProvider: CleanupProvider {
         )]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -50,6 +51,7 @@ struct XcodeArchivesProvider: CleanupProvider {
         )]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -266,6 +268,7 @@ struct XcodeSimulatorDataProvider: CleanupProvider {
         ProviderPaths.simulatorCacheRoots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -304,6 +307,7 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
         ].map { xcode.appendingPathComponent($0, isDirectory: true) }
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

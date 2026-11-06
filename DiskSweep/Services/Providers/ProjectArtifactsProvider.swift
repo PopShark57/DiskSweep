@@ -152,6 +152,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         }
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

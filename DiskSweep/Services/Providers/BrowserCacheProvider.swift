@@ -15,6 +15,7 @@ struct BrowserCacheProvider: CleanupProvider {
         ProviderPaths.browserCacheRoots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

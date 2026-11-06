@@ -159,6 +159,7 @@ struct AndroidSystemImagesProvider: CleanupProvider {
         [AndroidSystemImageRules.imagesRoot(homeDirectory: homeDirectory)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

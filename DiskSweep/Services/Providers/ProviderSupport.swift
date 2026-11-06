@@ -10,6 +10,9 @@ enum ProviderSupport {
         excludedChildNames: Set<String> = [],
         forceDefaultSelection: Bool? = nil
     ) async -> ProviderScanResult {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
         let scanner = FileSystemScanner()
         let sizer = DirectorySizer()
         let excludedNames = Set(excludedChildNames.map { $0.lowercased() })
@@ -252,6 +255,9 @@ enum ProviderSupport {
         permittedNestedNames: Set<String> = [],
         candidates: @Sendable (URL) -> [DirectoryCandidate]
     ) async -> ProviderScanResult {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
         let validator = SafetyValidator(homeDirectory: context.homeDirectory)
         var issues: [ScanIssue] = []
         var items: [CleanupItem] = []

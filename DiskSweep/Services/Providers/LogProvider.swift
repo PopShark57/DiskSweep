@@ -21,6 +21,7 @@ struct LogProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent("Library/Logs", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

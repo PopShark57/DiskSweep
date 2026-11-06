@@ -16,6 +16,7 @@ struct DownloadsProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent("Downloads", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

@@ -22,6 +22,11 @@ protocol CleanupProvider: Sendable {
     var location: CleanupLocation { get }
     var allowedRoots: [URL] { get }
 
+    /// Providers do synchronous filesystem work (listing roots, evaluating rules) inside
+    /// `scan`. `@concurrent` guarantees it runs on the global concurrent executor even when
+    /// called from the main actor, independent of the `NonisolatedNonsendingByDefault`
+    /// build setting. Every implementation must keep the attribute.
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
