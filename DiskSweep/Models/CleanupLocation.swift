@@ -159,6 +159,34 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         }
     }
 
+    enum IdentityMatching: Sendable {
+        /// The item must be exactly as scanned: device, inode, size, allocation, kind, and
+        /// modification and change times.
+        case strict
+        /// The item must be the same filesystem object (device, inode, and kind). Its
+        /// timestamps may change, as an active cache folder's do whenever its app adds an
+        /// entry.
+        case stableObject
+    }
+
+    /// How closely an item must match its scan-time identity before cleanup.
+    ///
+    /// Regenerable `.safe` caches under fixed roots use `.stableObject`, so a cache that a
+    /// running app keeps writing to can still be cleaned. Replacing the folder with another
+    /// one (a different inode) is still refused, the roots are still allowlisted, and the
+    /// engine still walks every descendant right before removal. Everything else, including
+    /// user files, Downloads, logs, and rule-based locations, keeps `.strict`. The engine's
+    /// final `revalidate` right before mutation is always strict.
+    var identityMatching: IdentityMatching {
+        switch self {
+        case .userCaches, .applicationCaches, .browserCaches, .electronAppCaches,
+             .xcodeDerivedData, .swiftPackageCaches, .homebrewCache, .developerToolCaches:
+            .stableObject
+        default:
+            .strict
+        }
+    }
+
     /// Locations whose items move to the Trash unless the person chooses permanent deletion,
     /// because they may hold something that cannot be downloaded or rebuilt.
     var defaultsToTrash: Bool {

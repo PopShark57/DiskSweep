@@ -98,7 +98,7 @@ A scan never deletes anything. Cleanup candidates retain their provider identity
 2. Canonicalizes the provider's approved roots and requires a user-scoped location.
 3. Refuses the approved root itself, direct symbolic-link targets, cross-volume targets, and anything outside the authorized root.
 4. Blocks protected system and user locations, including system directories, Documents, Desktop, media libraries, credentials, mail, messages, browser data, cloud storage, backups, and non-cache Application Support data.
-5. Records exact scan-time device, inode, size, allocation, modification-time, change-time, and file-kind identity for every provider cleanup candidate—including Downloads analyzer results.
+5. Records exact scan-time device, inode, size, allocation, modification-time, change-time, and file-kind identity for every provider cleanup candidate—including Downloads analyzer results. Before cleanup, the item must still match that identity. Regenerable caches under fixed roots (User, Application, Browser, and Electron caches, DerivedData, Swift Package, Homebrew, and package-manager caches) only need to be the same object (device, inode, and kind), because an app that's running keeps adding entries to its cache folder, which changes the folder's timestamps. A cache folder replaced by a different one is still refused, files are still checked exactly, and every other location, including Downloads, logs, and rule-based locations, keeps the exact match.
 6. Revalidates that identity, active exclusions, directory descendants, and volume boundaries immediately before mutation to reduce time-of-check/time-of-use risk.
 7. Uses native `FileManager` operations—never path-interpolated shell deletion commands.
 

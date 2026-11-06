@@ -141,7 +141,11 @@ actor CleanupEngine: CleanupPerforming {
                         throw SafetyValidationError.targetChanged(item.url.path)
                     }
                     if let scanSnapshot,
-                       firstValidation.identity != scanSnapshot.identity {
+                       !Self.identity(
+                           firstValidation.identity,
+                           matches: scanSnapshot.identity,
+                           policy: item.location.identityMatching
+                       ) {
                         throw SafetyValidationError.targetChanged(item.url.path)
                     }
 
@@ -289,13 +293,35 @@ actor CleanupEngine: CleanupPerforming {
         }
     }
 
+    /// Compares a target with its scan-time identity under the location's policy.
+    static func identity(
+        _ current: FileIdentity,
+        matches scanned: FileIdentity,
+        policy: CleanupLocation.IdentityMatching
+    ) -> Bool {
+        switch policy {
+        case .strict:
+            current == scanned
+        case .stableObject:
+            current.device == scanned.device
+                && current.inode == scanned.inode
+                && current.kind == scanned.kind
+        }
+    }
+
     private static func matchesScannedMetadata(
         _ item: CleanupItem,
         identity: FileIdentity
     ) -> Bool {
         guard identity.kind == item.kind else { return false }
 
-        if let modifiedAt = item.modifiedAt,
+        // An active cache folder's modification time changes whenever its app adds an entry;
+        // for those locations the folder only has to be the same object (see
+        // `CleanupLocation.identityMatching`). Files are always checked.
+        let skipsFolderTimestamp = item.kind == .directory
+            && item.location.identityMatching == .stableObject
+        if !skipsFolderTimestamp,
+           let modifiedAt = item.modifiedAt,
            Int64(modifiedAt.timeIntervalSince1970) != identity.modificationTime {
             return false
         }

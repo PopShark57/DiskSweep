@@ -385,6 +385,134 @@ final class CleanupEngineTests: XCTestCase {
         XCTAssertEqual(result.failures.map(\.itemName), ["keep.txt"])
     }
 
+    // MARK: - Identity policy for active caches (L2)
+
+    private func makeCacheHome() throws -> (home: URL, caches: URL) {
+        let home = root.appendingPathComponent("CacheHome-\(UUID().uuidString)", isDirectory: true)
+        let caches = home.appendingPathComponent("Library/Caches", isDirectory: true)
+        try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)
+        return (home, caches)
+    }
+
+    private func cacheEngine(home: URL) -> CleanupEngine {
+        CleanupEngine(
+            safetyValidator: SafetyValidator(
+                homeDirectory: home,
+                temporaryDirectory: FileManager.default.temporaryDirectory
+            ),
+            snapshots: snapshots
+        )
+    }
+
+    func testActiveCacheFolderThatGainsAChildIsStillCleaned() async throws {
+        let (home, caches) = try makeCacheHome()
+        let folder = caches.appendingPathComponent("com.example.Browser", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: folder.appendingPathComponent("entry-1"))
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scan = await provider.scan(context: ScanContext(homeDirectory: home, snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url.lastPathComponent == "com.example.Browser" })
+
+        // A running app writes a new cache entry, which changes the folder's mtime and ctime.
+        try await Task.sleep(for: .milliseconds(1_100))
+        try Data("new".utf8).write(to: folder.appendingPathComponent("entry-2"))
+
+        let result = await cacheEngine(home: home).clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// Negative: a cache folder replaced by a different folder (new inode) is refused.
+    func testActiveCacheFolderReplacedByAnotherFolderIsRefused() async throws {
+        let (home, caches) = try makeCacheHome()
+        let folder = caches.appendingPathComponent("com.example.Browser", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: folder.appendingPathComponent("entry"))
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scan = await provider.scan(context: ScanContext(homeDirectory: home, snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url.lastPathComponent == "com.example.Browser" })
+        let scannedInode = try SafetyValidator.captureIdentity(at: folder).inode
+
+        let staged = caches.appendingPathComponent("staged", isDirectory: true)
+        try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+        try Data("replacement".utf8).write(to: staged.appendingPathComponent("keep"))
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.moveItem(at: staged, to: folder)
+        XCTAssertNotEqual(try SafetyValidator.captureIdentity(at: folder).inode, scannedInode)
+
+        let result = await cacheEngine(home: home).clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(result.failures.first?.reason.contains("changed after validation") == true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("keep").path))
+    }
+
+    /// Negative: outside the relaxed cache locations, a folder that gains a child is still
+    /// refused (Temporary Files keeps strict matching).
+    func testStrictLocationFolderThatGainsAChildIsStillRefused() async throws {
+        let folder = root.appendingPathComponent("StrictFolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: folder.appendingPathComponent("a.cache"))
+        let provider = TestDirectoryProvider(root: root)
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url == folder })
+
+        try await Task.sleep(for: .milliseconds(1_100))
+        try Data("b".utf8).write(to: folder.appendingPathComponent("b.cache"))
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// Negative: a Downloads file whose modification time changed is still refused.
+    func testDownloadsFileWithChangedModificationTimeIsStillRefused() async throws {
+        let home = root.appendingPathComponent("MtimeHome", isDirectory: true)
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        let file = downloads.appendingPathComponent("notes.txt")
+        try Data("draft".utf8).write(to: file)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_900_000_000)],
+            ofItemAtPath: file.path
+        )
+        let provider = DownloadsProvider(homeDirectory: home)
+        let analysis = try await DownloadsAnalyzer().scan(
+            root: downloads,
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
+        )
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: try XCTUnwrap(analysis.allFiles.first), registry: snapshots))
+
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_950_000_000)],
+            ofItemAtPath: file.path
+        )
+
+        let result = await cacheEngine(home: home).clean([cleanupItem], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testIdentityPolicyComparesOnlyObjectForStableLocations() {
+        func identity(inode: UInt64 = 2, mtime: Int64 = 5, kind: FileItemKind = .directory) -> FileIdentity {
+            FileIdentity(
+                device: 1, inode: inode, byteSize: 3, allocatedByteSize: 4, modificationTime: mtime,
+                modificationNanoseconds: 0, changeTime: mtime, changeNanoseconds: 0, kind: kind
+            )
+        }
+        XCTAssertTrue(CleanupEngine.identity(identity(mtime: 9), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(inode: 3), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(kind: .file), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(mtime: 9), matches: identity(), policy: .strict))
+        for location in CleanupLocation.allCases where location.identityMatching == .stableObject {
+            XCTAssertEqual(location.risk, .safe, "\(location)")
+            XCTAssertFalse(location.defaultsToTrash, "\(location)")
+        }
+        for location in [CleanupLocation.downloads, .userLogs, .trash, .temporaryFiles, .projectArtifacts,
+                         .staleIDEVersions, .androidSystemImages, .xcodeArchives] {
+            XCTAssertEqual(location.identityMatching, .strict, "\(location)")
+        }
+    }
+
     private var engine: CleanupEngine {
         CleanupEngine(
             safetyValidator: SafetyValidator(
