@@ -117,4 +117,13 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         XCTAssertEqual(result.root.size, 12)
         XCTAssertEqual(result.root.children.first?.name, "Documents")
     }
+
+    /// D11: the default threshold must be one of the presets, so the picker starts with a
+    /// valid selection and no custom stepper.
+    func testDefaultThresholdIsADecimalPreset() {
+        XCTAssertEqual(LargeFileAnalyzer.defaultThreshold, 100_000_000)
+        XCTAssertTrue(
+            LargeFileAnalyzer.thresholdPresets.contains { $0.bytes == LargeFileAnalyzer.defaultThreshold }
+        )
+    }
 }

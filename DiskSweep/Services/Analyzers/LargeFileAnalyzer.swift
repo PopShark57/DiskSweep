@@ -14,7 +14,17 @@ struct LargeFileScanResult: Sendable {
 }
 
 struct LargeFileAnalyzer: Sendable {
-    static let defaultThreshold: Int64 = 100 * 1_024 * 1_024
+    /// Decimal units, matching how `ByteCountFormatter`'s file style labels sizes, so the
+    /// default is exactly the "> 100 MB" preset.
+    static let defaultThreshold: Int64 = 100_000_000
+
+    /// The threshold presets the Large Files screen offers.
+    static let thresholdPresets: [(title: String, bytes: Int64)] = [
+        ("> 100 MB", 100_000_000),
+        ("> 500 MB", 500_000_000),
+        ("> 1 GB", 1_000_000_000),
+        ("> 5 GB", 5_000_000_000)
+    ]
 
     private let progressBatchSize: Int
 
