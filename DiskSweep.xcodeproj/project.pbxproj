@@ -37,6 +37,7 @@
 		72A910695D71CBE36883F856 /* XcodeCleanupProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C8EFB0A0DC8F7FA3B389A5D /* XcodeCleanupProviders.swift */; };
 		75E1BB27FED0BD3BE9806BBA /* AnalyzerTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C0711D133676A963B511DC9 /* AnalyzerTestSupport.swift */; };
 		79968ECD05E94514F90801E6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D362C38CD30618C5B51FEB8D /* SettingsView.swift */; };
+		7BD95DC946F4F95DBBE5ED86 /* ProjectArtifactsProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EADEE607DF552D5F2DE9B1B /* ProjectArtifactsProviderTests.swift */; };
 		7DBFBC95EAA4325D1BC0BC9F /* CleanupReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F893D85C309C63C4A4DE1A /* CleanupReviewView.swift */; };
 		8BB9CC1E45CE255332C4AE03 /* AnalyzerDownloadsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E6A6D598C17C71EDB68DAF /* AnalyzerDownloadsTests.swift */; };
 		8C2068F5698500567D5784FD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6226F09DC617A3763DE5E4CE /* Assets.xcassets */; };
@@ -53,16 +54,15 @@
 		A4DC5014FD228F7FE199D8F3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1DBBC15F17FA309E4A76B /* RootView.swift */; };
 		A61182E7E88170019015C3FA /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75823D2C3CC63D99A6252A6 /* PermissionManager.swift */; };
 		A892DFA586C4AF9105B9281C /* StandardCleanupProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6097F9066D5D2FA90F013FB2 /* StandardCleanupProviders.swift */; };
+		A98846C2445CF1FF7F1FA376 /* ProjectArtifactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4AB8EA5C6B2BBA1FA9F1CF /* ProjectArtifactsProvider.swift */; };
 		ADE29FD908F4E6F038F7C8C5 /* SafetyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3144E9DFDA8FA6F504712760 /* SafetyValidator.swift */; };
 		B2D9BC3F4F54122E84F0817D /* TemporaryFilesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CBA446A10D2FDA1432341B2 /* TemporaryFilesProvider.swift */; };
 		B3A507E1F4BFCB3DDC863040 /* TrashCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14AEF53CFE0A266E3DB3BF1 /* TrashCleanupView.swift */; };
 		B84C916DB08B3D963ADC04EA /* CleanupCategoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3129452FE7B4EEDDC0F006 /* CleanupCategoryCard.swift */; };
 		BBDE231F7DD7E9BA8413AE44 /* DuplicateAnalyzerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0945C501630D4B045F069AD7 /* DuplicateAnalyzerTests.swift */; };
 		BC07A7188BF5ECD2598C7B29 /* LargeFolderAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA58D8A6A8EBF030DE32687C /* LargeFolderAnalyzer.swift */; };
-		45BD612219363CCD47C3B6B9 /* ProjectArtifactsProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2BC3048CC2631ECDFAD230 /* ProjectArtifactsProviderTests.swift */; };
 		C6945E7AE7BC3A179D036841 /* SafetyValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */; };
 		C8A427E3152DE84865E9F475 /* DiskService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C98CAFEB3917042AAE6FB6 /* DiskService.swift */; };
-		5F84400808340BDEE1F3CFAE /* ProjectArtifactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCBE6517168BEEA8F87529FD /* ProjectArtifactsProvider.swift */; };
 		C8FB78F6C6C1C9CA6D80B48E /* SwiftPackageCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611F715D94B12723434AC0AC /* SwiftPackageCacheProvider.swift */; };
 		C995D0747B1DBB12E4174B7C /* DeveloperToolCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDFC370F032336BD60D5ACD4 /* DeveloperToolCacheProvider.swift */; };
 		CC5B26B88ACC18B1B261E0CB /* HomebrewCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519E735A8152DC3D6D6FF6AE /* HomebrewCacheProvider.swift */; };
@@ -116,15 +116,14 @@
 		3B039C3340E49644FC10AAE4 /* CleanupHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupHistoryStoreTests.swift; sourceTree = "<group>"; };
 		3F484A4C77A427CF4B838DA7 /* CleanupItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupItem.swift; sourceTree = "<group>"; };
 		444CDF4873318E53653264BD /* DiskSweepTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiskSweepTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		2D2BC3048CC2631ECDFAD230 /* ProjectArtifactsProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProviderTests.swift; sourceTree = "<group>"; };
 		45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyValidatorTests.swift; sourceTree = "<group>"; };
 		4A25474D18D1307261730E5A /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		4D4AB8EA5C6B2BBA1FA9F1CF /* ProjectArtifactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProvider.swift; sourceTree = "<group>"; };
 		519E735A8152DC3D6D6FF6AE /* HomebrewCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomebrewCacheProvider.swift; sourceTree = "<group>"; };
 		573B722D5DE8A5FA7CDE20E0 /* ScanProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressView.swift; sourceTree = "<group>"; };
 		5C8EFB0A0DC8F7FA3B389A5D /* XcodeCleanupProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeCleanupProviders.swift; sourceTree = "<group>"; };
 		5CBA446A10D2FDA1432341B2 /* TemporaryFilesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryFilesProvider.swift; sourceTree = "<group>"; };
 		6097F9066D5D2FA90F013FB2 /* StandardCleanupProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardCleanupProviders.swift; sourceTree = "<group>"; };
-		FCBE6517168BEEA8F87529FD /* ProjectArtifactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProvider.swift; sourceTree = "<group>"; };
 		611F715D94B12723434AC0AC /* SwiftPackageCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPackageCacheProvider.swift; sourceTree = "<group>"; };
 		615889E1FD22E0F4D0CB5E44 /* StaleIDEVersionsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleIDEVersionsProvider.swift; sourceTree = "<group>"; };
 		6226F09DC617A3763DE5E4CE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -135,7 +134,9 @@
 		6E7AB9F3D1F3D0CB4FC7C495 /* LargeFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFilesView.swift; sourceTree = "<group>"; };
 		7017E38FB8324CFE93D16DA6 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		70C41C31BFCFD107D9698C92 /* CleanupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupListView.swift; sourceTree = "<group>"; };
+		7124A00EEBE462974F620C75 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		74A0A4ED0BDF4BDC9AC011EA /* DiskSweepCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSweepCommands.swift; sourceTree = "<group>"; };
+		7EADEE607DF552D5F2DE9B1B /* ProjectArtifactsProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProviderTests.swift; sourceTree = "<group>"; };
 		855422381EB6E4FA445F24C1 /* CleanupHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupHistoryStore.swift; sourceTree = "<group>"; };
 		85BA706EDCECF32CC2CD6A90 /* FileSizeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSizeFormatter.swift; sourceTree = "<group>"; };
 		901A2006E7791D300F8FB75C /* DuplicatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicatesView.swift; sourceTree = "<group>"; };
@@ -183,6 +184,14 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		12560F79FBE6670852E3CDF7 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				7124A00EEBE462974F620C75 /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		37B7107AE1033BE17BBEF672 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -200,6 +209,7 @@
 		39BE7C41869CA18338A0A418 = {
 			isa = PBXGroup;
 			children = (
+				12560F79FBE6670852E3CDF7 /* Config */,
 				9059AD48614D85A37FAB7DB2 /* DiskSweep */,
 				F8DBEF58920165DACB704EEA /* DiskSweepTests */,
 				FBE92A9B403B53B11F62886A /* Products */,
@@ -292,7 +302,7 @@
 				F4EE8321CABFA77AFBEF8126 /* ElectronAppCacheProvider.swift */,
 				519E735A8152DC3D6D6FF6AE /* HomebrewCacheProvider.swift */,
 				94BA7BA27F37755DFA41BF27 /* LogProvider.swift */,
-				FCBE6517168BEEA8F87529FD /* ProjectArtifactsProvider.swift */,
+				4D4AB8EA5C6B2BBA1FA9F1CF /* ProjectArtifactsProvider.swift */,
 				EA0A2C06A65BDEF997A397C5 /* ProviderSupport.swift */,
 				615889E1FD22E0F4D0CB5E44 /* StaleIDEVersionsProvider.swift */,
 				6097F9066D5D2FA90F013FB2 /* StandardCleanupProviders.swift */,
@@ -352,7 +362,7 @@
 				3B039C3340E49644FC10AAE4 /* CleanupHistoryStoreTests.swift */,
 				16466F08F475C42BD58CEB4F /* DeveloperCleanupProvidersTests.swift */,
 				0945C501630D4B045F069AD7 /* DuplicateAnalyzerTests.swift */,
-				2D2BC3048CC2631ECDFAD230 /* ProjectArtifactsProviderTests.swift */,
+				7EADEE607DF552D5F2DE9B1B /* ProjectArtifactsProviderTests.swift */,
 				BD07BDD95C44F442B8416540 /* SafetyScannerTests.swift */,
 				45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */,
 				C2482816FE2115D26E1514BE /* ScanCancellationTests.swift */,
@@ -419,6 +429,9 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					A4D583DE32399FF55D1219FF = {
+						ProvisioningStyle = Automatic;
+					};
+					CD63AF6F253CB632898BAF51 = {
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -503,6 +516,7 @@
 				F0434DC74C79C203145C433F /* LogProvider.swift in Sources */,
 				016CD8AA1765888A8C307679 /* OverviewView.swift in Sources */,
 				A61182E7E88170019015C3FA /* PermissionManager.swift in Sources */,
+				A98846C2445CF1FF7F1FA376 /* ProjectArtifactsProvider.swift in Sources */,
 				FD0384B77A08A52126D764DA /* ProviderSupport.swift in Sources */,
 				A4DC5014FD228F7FE199D8F3 /* RootView.swift in Sources */,
 				ADE29FD908F4E6F038F7C8C5 /* SafetyValidator.swift in Sources */,
@@ -514,7 +528,6 @@
 				A17D4934B59B26186285A048 /* StaleIDEVersionsProvider.swift in Sources */,
 				A892DFA586C4AF9105B9281C /* StandardCleanupProviders.swift in Sources */,
 				5668248F5256856FB4AA064D /* StorageVisualization.swift in Sources */,
-				5F84400808340BDEE1F3CFAE /* ProjectArtifactsProvider.swift in Sources */,
 				C8FB78F6C6C1C9CA6D80B48E /* SwiftPackageCacheProvider.swift in Sources */,
 				B2D9BC3F4F54122E84F0817D /* TemporaryFilesProvider.swift in Sources */,
 				B3A507E1F4BFCB3DDC863040 /* TrashCleanupView.swift in Sources */,
@@ -535,8 +548,8 @@
 				22316DC023E5BA2F6D819DE0 /* CleanupHistoryStoreTests.swift in Sources */,
 				A0E9E004D9B742CB94AE490D /* DeveloperCleanupProvidersTests.swift in Sources */,
 				BBDE231F7DD7E9BA8413AE44 /* DuplicateAnalyzerTests.swift in Sources */,
+				7BD95DC946F4F95DBBE5ED86 /* ProjectArtifactsProviderTests.swift in Sources */,
 				91D337DF2928E3FFF38B718C /* SafetyScannerTests.swift in Sources */,
-				45BD612219363CCD47C3B6B9 /* ProjectArtifactsProviderTests.swift in Sources */,
 				C6945E7AE7BC3A179D036841 /* SafetyValidatorTests.swift in Sources */,
 				DAADC469CA8AE195C89C2A35 /* ScanCancellationTests.swift in Sources */,
 				113AF11F06CAF4714610F739 /* SettingsStoreTests.swift in Sources */,
@@ -558,7 +571,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -628,8 +641,10 @@
 		};
 		40229A46C3B040AF1579C80F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7124A00EEBE462974F620C75 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -686,6 +701,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -694,8 +710,10 @@
 		};
 		96E54285C957F9963C38AD72 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7124A00EEBE462974F620C75 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -745,6 +763,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -755,7 +774,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

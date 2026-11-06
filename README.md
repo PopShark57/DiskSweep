@@ -156,6 +156,16 @@ Filesystem-intensive work is isolated from the main actor. UI-facing stores use 
 - Xcode with Swift 6 and the macOS 15 SDK or later
 - XcodeGen only when regenerating the project
 
+### Signing
+
+The signing team isn't committed. `project.yml` points both configurations at `Config/Signing.xcconfig`, which optionally includes `Config/Local.xcconfig` (gitignored). To sign with your team, copy the example and set your team ID:
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig
+```
+
+Without `Local.xcconfig`, Xcode signs the app and the test bundle to run locally. Both targets are always signed the same way, because the hardened-runtime host app refuses to load a test bundle signed by a different team.
+
 ### Open and run in Xcode
 
 The generated Xcode project is included, so XcodeGen is not required for normal use:

@@ -7,6 +7,10 @@ options:
     macOS: "15.0"
   xcodeVersion: "27.0"
 
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -17,6 +21,8 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     CLANG_ENABLE_MODULES: YES
     DEAD_CODE_STRIPPING: YES
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
 
 targets:
   DiskSweep:
@@ -57,4 +63,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.disksweep.DiskSweepTests
         GENERATE_INFOPLIST_FILE: YES
-        CODE_SIGNING_ALLOWED: NO
+        # The test bundle is signed the same way as the app (same team, or ad hoc without
+        # Config/Local.xcconfig). An unsigned bundle can't load into the hardened-runtime
+        # host app once the app is signed with a team.
+        CODE_SIGN_STYLE: Automatic
