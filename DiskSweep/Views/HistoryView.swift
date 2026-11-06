@@ -3,6 +3,10 @@ import SwiftUI
 struct HistoryView: View {
     let entries: [CleanupHistoryEntry]
     var persistenceError: String?
+    var deleteEntry: (CleanupHistoryEntry.ID) -> Void = { _ in }
+    var clearHistory: () -> Void = {}
+
+    @State private var confirmsClear = false
 
     private var totalRecovered: Int64 {
         entries.reduce(0) { $0 + $1.bytesRecovered }
@@ -82,9 +86,21 @@ struct HistoryView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+
+                                Button {
+                                    deleteEntry(entry.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Delete this history entry")
+                                .accessibilityLabel("Delete history entry from \(entry.date.formatted(date: .long, time: .omitted))")
                             }
                             .padding(.horizontal, 18)
                             .padding(.vertical, 14)
+                            .contextMenu {
+                                Button("Delete Entry", role: .destructive) { deleteEntry(entry.id) }
+                            }
 
                             if entry.id != entries.sorted(by: { $0.date > $1.date }).last?.id {
                                 Divider().padding(.leading, 56)
@@ -96,6 +112,22 @@ struct HistoryView: View {
             }
             .padding(28)
             .frame(maxWidth: 980, alignment: .leading)
+        }
+        .toolbar {
+            ToolbarItem {
+                Button("Clear History…") { confirmsClear = true }
+                    .disabled(entries.isEmpty)
+            }
+        }
+        .confirmationDialog(
+            "Clear all cleanup history?",
+            isPresented: $confirmsClear,
+            titleVisibility: .visible
+        ) {
+            Button("Clear History", role: .destructive, action: clearHistory)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the record of past cleanups from this Mac. It doesn't restore or change any files.")
         }
     }
 

@@ -246,7 +246,9 @@ struct RootView: View {
         case .history:
             HistoryView(
                 entries: model.history.entries,
-                persistenceError: model.history.lastPersistenceError
+                persistenceError: model.history.lastPersistenceError,
+                deleteEntry: model.deleteHistoryEntry,
+                clearHistory: model.clearHistory
             )
         }
     }

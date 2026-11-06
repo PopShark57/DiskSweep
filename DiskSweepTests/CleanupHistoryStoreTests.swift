@@ -145,6 +145,33 @@ final class CleanupHistoryStoreTests: XCTestCase {
         XCTAssertNotNil(store.lastPersistenceError)
     }
 
+    // MARK: - History management (F8)
+
+    func testEntriesCanBeDeletedClearedAndTheFileRemoved() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("history.json")
+        let backup = directory.appendingPathComponent("cleanup-history.unreadable-old.json")
+        try Data("keep".utf8).write(to: backup)
+        let store = CleanupHistoryStore(fileURL: fileURL)
+        let first = makeEntry(date: Date(timeIntervalSince1970: 100), bytes: 1)
+        let second = makeEntry(date: Date(timeIntervalSince1970: 200), bytes: 2)
+        try store.add(first)
+        try store.add(second)
+
+        try store.remove(id: first.id)
+        XCTAssertEqual(CleanupHistoryStore(fileURL: fileURL).entries.map(\.id), [second.id])
+
+        try store.clear()
+        XCTAssertTrue(CleanupHistoryStore(fileURL: fileURL).entries.isEmpty)
+        XCTAssertTrue(store.hasHistoryFile)
+
+        try store.deleteHistoryFile()
+        XCTAssertFalse(store.hasHistoryFile)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path), "Set-aside files are left alone")
+    }
+
     // MARK: - Recovered-space measurement (L3)
 
     func testMeasuredRecoveryPrefersValuesWithoutPurgeableSpace() {

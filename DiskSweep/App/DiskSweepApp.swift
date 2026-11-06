@@ -18,7 +18,9 @@ struct DiskSweepApp: App {
             SettingsView(
                 settings: model.settings,
                 permissions: model.permissions,
-                homeDirectory: model.homeDirectory
+                homeDirectory: model.homeDirectory,
+                hasHistoryFile: model.history.hasHistoryFile,
+                deleteHistoryFile: model.deleteHistoryFile
             )
             .frame(width: 760, height: 560)
         }

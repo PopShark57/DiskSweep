@@ -110,6 +110,24 @@ final class CleanupHistoryStore {
         }
     }
 
+    /// Removes the history file itself, for example when the person turns history off.
+    /// Files set aside as unreadable are left alone.
+    func deleteHistoryFile() throws {
+        if fileManager.fileExists(atPath: fileURL.path) {
+            do {
+                try fileManager.removeItem(at: fileURL)
+            } catch {
+                lastPersistenceError = "Cleanup history could not be deleted: \(error.localizedDescription)"
+                throw error
+            }
+        }
+        entries = []
+        isReadOnly = false
+        lastPersistenceError = nil
+    }
+
+    var hasHistoryFile: Bool { fileManager.fileExists(atPath: fileURL.path) }
+
     func reload() throws {
         guard fileManager.fileExists(atPath: fileURL.path) else {
             entries = []

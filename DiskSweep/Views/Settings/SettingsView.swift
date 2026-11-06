@@ -7,6 +7,11 @@ struct SettingsView: View {
     /// The home folder project folders are checked against. Debug builds can override it
     /// with a fixture home; see `DebugLaunchEnvironment`.
     var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    /// Whether a cleanup history file exists, and how to delete it when history is turned off.
+    var hasHistoryFile: Bool = false
+    var deleteHistoryFile: () -> Void = {}
+
+    @State private var offersHistoryDeletion = false
 
     @State private var selectedTab: SettingsTab = .general
     @State private var folderPickerPurpose: FolderPickerPurpose?
@@ -331,6 +336,19 @@ struct SettingsView: View {
                 isOn: $settings.privacy.keepLocalCleanupHistory
             )
             .cardSurface(padding: 0)
+            .onChange(of: settings.privacy.keepLocalCleanupHistory) { _, keeps in
+                if !keeps, hasHistoryFile { offersHistoryDeletion = true }
+            }
+            .confirmationDialog(
+                "Delete the existing cleanup history?",
+                isPresented: $offersHistoryDeletion,
+                titleVisibility: .visible
+            ) {
+                Button("Delete History", role: .destructive, action: deleteHistoryFile)
+                Button("Keep File", role: .cancel) {}
+            } message: {
+                Text("New cleanups won't be recorded. The history already saved on this Mac stays unless you delete it.")
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {

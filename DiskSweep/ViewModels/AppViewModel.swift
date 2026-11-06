@@ -450,6 +450,32 @@ final class AppViewModel {
 
     func clearError() { errorMessage = nil }
 
+    // MARK: - History management
+
+    func deleteHistoryEntry(_ id: CleanupHistoryEntry.ID) {
+        do {
+            try history.remove(id: id)
+        } catch {
+            errorMessage = "The history entry could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
+    func clearHistory() {
+        do {
+            try history.clear()
+        } catch {
+            errorMessage = "Cleanup history could not be cleared: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteHistoryFile() {
+        do {
+            try history.deleteHistoryFile()
+        } catch {
+            errorMessage = "Cleanup history could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Test support
 
     /// Waits for the current cleanup scan to finish. Used by tests.
