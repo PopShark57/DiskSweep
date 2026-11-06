@@ -47,10 +47,35 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
 struct CleanupResult: Codable, Hashable, Sendable {
     let startedAt: Date
     let finishedAt: Date
+    /// Free space including purgeable space, as shown to the user.
     let availableBefore: Int64
     let availableAfter: Int64
+    /// Free space excluding purgeable space, used to measure what the cleanup freed.
+    /// `nil` when not measured; the values above are used instead.
+    let availableBeforeExcludingPurgeable: Int64?
+    let availableAfterExcludingPurgeable: Int64?
     let cleanedItems: [CleanedItemRecord]
     let failures: [CleanupFailure]
+
+    init(
+        startedAt: Date,
+        finishedAt: Date,
+        availableBefore: Int64,
+        availableAfter: Int64,
+        availableBeforeExcludingPurgeable: Int64? = nil,
+        availableAfterExcludingPurgeable: Int64? = nil,
+        cleanedItems: [CleanedItemRecord],
+        failures: [CleanupFailure]
+    ) {
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.availableBefore = availableBefore
+        self.availableAfter = availableAfter
+        self.availableBeforeExcludingPurgeable = availableBeforeExcludingPurgeable
+        self.availableAfterExcludingPurgeable = availableAfterExcludingPurgeable
+        self.cleanedItems = cleanedItems
+        self.failures = failures
+    }
 
     var reportedBytesRemoved: Int64 {
         cleanedItems.reduce(0) { $0 + $1.bytes }
@@ -68,8 +93,23 @@ struct CleanupResult: Codable, Hashable, Sendable {
             .reduce(0) { $0 + $1.bytes }
     }
 
+    /// An estimate: the change in free space excluding purgeable space when it was measured,
+    /// which background activity can still nudge. History entries recorded before this
+    /// measurement changed (6.4) used the value that includes purgeable space, so old and new
+    /// entries aren't strictly comparable.
     var measuredBytesRecovered: Int64 {
-        max(0, availableAfter - availableBefore)
+        if let before = availableBeforeExcludingPurgeable,
+           let after = availableAfterExcludingPurgeable {
+            return max(0, after - before)
+        }
+        return max(0, availableAfter - availableBefore)
+    }
+
+    /// True when much less space was measured than was permanently removed, which usually
+    /// means local snapshots still hold the blocks or the volume is still freeing them.
+    var measuredRecoveryLooksLow: Bool {
+        let removed = reportedBytesPermanentlyRemoved
+        return removed > 0 && measuredBytesRecovered * 2 < removed
     }
 
     /// A conservative presentation value. Moving an item to same-volume Trash does not

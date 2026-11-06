@@ -75,7 +75,7 @@ actor CleanupEngine: CleanupPerforming {
         exclusions: [URL] = []
     ) async -> CleanupResult {
         let startedAt = Date()
-        let availableBefore = await availableCapacity()
+        let before = await capacitySnapshot()
         let authorizationMap = Dictionary(
             authorizations.map { ($0.providerID, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -212,15 +212,17 @@ actor CleanupEngine: CleanupPerforming {
             )
         }
 
-        let availableAfter = await availableCapacity()
+        let after = await capacitySnapshot()
         Log.cleanup.info(
             "Cleanup finished: \(cleaned.count, privacy: .public) cleaned, \(failures.count, privacy: .public) not cleaned"
         )
         return CleanupResult(
             startedAt: startedAt,
             finishedAt: Date(),
-            availableBefore: availableBefore,
-            availableAfter: availableAfter,
+            availableBefore: before.available,
+            availableAfter: after.available,
+            availableBeforeExcludingPurgeable: before.excludingPurgeable,
+            availableAfterExcludingPurgeable: after.excludingPurgeable,
             cleanedItems: cleaned,
             failures: failures
         )
@@ -231,8 +233,9 @@ actor CleanupEngine: CleanupPerforming {
         return CleanupFailure(itemName: item.name, path: item.url.path, reason: reason)
     }
 
-    private func availableCapacity() async -> Int64 {
-        (try? await diskService.statistics())?.available ?? 0
+    private func capacitySnapshot() async -> (available: Int64, excludingPurgeable: Int64?) {
+        guard let statistics = try? await diskService.statistics() else { return (0, nil) }
+        return (statistics.available, statistics.availableExcludingPurgeable)
     }
 
     /// How an item is removed. The review sheet shows this same value, so what it says

@@ -145,6 +145,42 @@ final class CleanupHistoryStoreTests: XCTestCase {
         XCTAssertNotNil(store.lastPersistenceError)
     }
 
+    // MARK: - Recovered-space measurement (L3)
+
+    func testMeasuredRecoveryPrefersValuesWithoutPurgeableSpace() {
+        let record = CleanedItemRecord(name: "Cache", location: .userCaches, bytes: 1_000, fileCount: 1, disposition: .permanent)
+        let result = CleanupResult(
+            startedAt: Date(), finishedAt: Date(),
+            availableBefore: 10_000, availableAfter: 30_000,
+            availableBeforeExcludingPurgeable: 5_000, availableAfterExcludingPurgeable: 5_900,
+            cleanedItems: [record], failures: []
+        )
+        XCTAssertEqual(result.measuredBytesRecovered, 900)
+        XCTAssertEqual(result.creditedBytesRecovered, 900)
+        XCTAssertFalse(result.measuredRecoveryLooksLow)
+
+        let legacy = CleanupResult(
+            startedAt: Date(), finishedAt: Date(),
+            availableBefore: 10_000, availableAfter: 10_400,
+            cleanedItems: [record], failures: []
+        )
+        XCTAssertEqual(legacy.measuredBytesRecovered, 400)
+        XCTAssertTrue(legacy.measuredRecoveryLooksLow, "400 of 1,000 bytes is less than half")
+    }
+
+    func testNoMeasuredChangeFallsBackToRemovedBytesAndFlagsIt() {
+        let record = CleanedItemRecord(name: "Cache", location: .userCaches, bytes: 2_000, fileCount: 1, disposition: .permanent)
+        let result = CleanupResult(
+            startedAt: Date(), finishedAt: Date(),
+            availableBefore: 1_000, availableAfter: 1_000,
+            availableBeforeExcludingPurgeable: 800, availableAfterExcludingPurgeable: 700,
+            cleanedItems: [record], failures: []
+        )
+        XCTAssertEqual(result.measuredBytesRecovered, 0)
+        XCTAssertEqual(result.creditedBytesRecovered, 2_000)
+        XCTAssertTrue(result.measuredRecoveryLooksLow)
+    }
+
     // MARK: - Tolerant, non-destructive loading (D5)
 
     func testUnknownCategoryAndDamagedEntryAreDroppedButValidEntriesLoad() throws {

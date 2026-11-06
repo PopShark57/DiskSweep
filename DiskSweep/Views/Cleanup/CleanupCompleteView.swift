@@ -14,7 +14,7 @@ struct CleanupCompleteView: View {
 
     private var completionSummary: String {
         if recoveredBytes > 0 {
-            return "\(FileSizeFormatter.string(fromByteCount: recoveredBytes)) recovered"
+            return "About \(FileSizeFormatter.string(fromByteCount: recoveredBytes)) recovered"
         }
         if result.reportedBytesMovedToTrash > 0 {
             return "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) moved to Trash"
@@ -59,6 +59,15 @@ struct CleanupCompleteView: View {
                     value: FileSizeFormatter.string(fromByteCount: result.availableAfter),
                     symbol: "checkmark.circle"
                 )
+            }
+
+            if result.measuredRecoveryLooksLow {
+                Label(
+                    "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesPermanentlyRemoved)) was deleted. Space may be held by local snapshots or still being freed, so less free space was measured.",
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .foregroundStyle(.secondary)
+                .cardSurface()
             }
 
             if result.reportedBytesMovedToTrash > 0 {
