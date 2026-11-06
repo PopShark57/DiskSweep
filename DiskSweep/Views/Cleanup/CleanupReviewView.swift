@@ -1,5 +1,23 @@
 import SwiftUI
 
+/// Pure decisions behind the review sheet, kept out of the view so they can be tested.
+enum CleanupReviewModel {
+    /// Developer folders that may hold something irreplaceable, such as old IDE settings or
+    /// hand-installed packages, and so default to the Trash.
+    static func includesTrashFirstFolders(_ items: [CleanupItem]) -> Bool {
+        items.contains { $0.location.defaultsToTrash && $0.location != .downloads }
+    }
+
+    /// The disposition the sheet starts on. Trash-first developer folders always start on
+    /// Move to Trash, whatever the user-file preference says; otherwise the preference wins.
+    static func initialDisposition(
+        items: [CleanupItem],
+        preference: CleanupDisposition
+    ) -> CleanupDisposition {
+        includesTrashFirstFolders(items) ? .trash : preference
+    }
+}
+
 struct CleanupReviewView: View {
     let items: [CleanupItem]
     let isCleaning: Bool
@@ -17,7 +35,10 @@ struct CleanupReviewView: View {
         self.items = items
         self.isCleaning = isCleaning
         self.clean = clean
-        _userFileDisposition = State(initialValue: preferredUserFileDisposition)
+        _userFileDisposition = State(initialValue: CleanupReviewModel.initialDisposition(
+            items: items,
+            preference: preferredUserFileDisposition
+        ))
     }
 
     private var groups: [(location: CleanupLocation, items: [CleanupItem])] {
@@ -28,10 +49,8 @@ struct CleanupReviewView: View {
 
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     private var includesUserFiles: Bool { items.contains { $0.risk == .userFiles } }
-    /// Developer folders that may hold something irreplaceable, such as old IDE settings or
-    /// hand-installed packages, and so default to the Trash.
     private var includesTrashFirstFolders: Bool {
-        items.contains { $0.location.defaultsToTrash && $0.location != .downloads }
+        CleanupReviewModel.includesTrashFirstFolders(items)
     }
     private var includesTrash: Bool { items.contains { $0.location == .trash } }
 
