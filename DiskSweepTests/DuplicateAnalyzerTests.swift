@@ -148,4 +148,24 @@ final class DuplicateAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.filesAnalyzed, 1)
         XCTAssertTrue(result.groups.isEmpty)
     }
+
+    /// F4: clones are still duplicates, but each reports almost no unique size.
+    func testClonedCopiesReportTheirUniqueSize() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let original = try temporary.file("A/original.bin", data: Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0 &* 7) }))
+        let clone = temporary.url.appendingPathComponent("B/clone.bin")
+        try FileManager.default.createDirectory(at: clone.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let status = original.withUnsafeFileSystemRepresentation { source in
+            clone.withUnsafeFileSystemRepresentation { clonefile(source!, $0!, 0) }
+        }
+        XCTAssertEqual(status, 0)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+
+        let files = try XCTUnwrap(result.groups.first?.files)
+        XCTAssertEqual(files.count, 2)
+        XCTAssertTrue(files.allSatisfy { ($0.uniqueSize ?? .max) < 4_096 })
+        XCTAssertTrue(files.allSatisfy(\.isMostlyShared))
+    }
 }

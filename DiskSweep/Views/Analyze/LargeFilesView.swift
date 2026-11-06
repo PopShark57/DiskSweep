@@ -162,8 +162,16 @@ struct LargeFilesView: View {
                     .width(min: 260, ideal: 430)
 
                     TableColumn("Size") { file in
-                        Text(FileSizeFormatter.string(fromByteCount: file.size))
-                            .monospacedDigit()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(FileSizeFormatter.string(fromByteCount: file.size))
+                                .monospacedDigit()
+                            if file.isMostlyShared, let unique = file.uniqueSize {
+                                Text("\(FileSizeFormatter.string(fromByteCount: unique)) unique")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .help("Most of this file shares storage with APFS clones, so removing it frees about this much.")
+                            }
+                        }
                     }
                     .width(min: 90, ideal: 110)
 

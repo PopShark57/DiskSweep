@@ -53,7 +53,8 @@ struct LargeFileAnalyzer: Sendable {
             )
 
             try Task.checkCancellation()
-            let files = enumeration.files.sorted {
+            // Only matched files are measured, so this is one call per result.
+            let files = enumeration.files.map { $0.measuringUniqueSize() }.sorted {
                 if $0.size == $1.size {
                     return $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending
                 }

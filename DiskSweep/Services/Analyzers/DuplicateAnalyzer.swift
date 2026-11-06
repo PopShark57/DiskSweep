@@ -227,7 +227,7 @@ struct DuplicateAnalyzer: Sendable {
                         )
 
                         for cluster in confirmedClusters where cluster.count > 1 {
-                            let sortedFiles = cluster.sorted {
+                            let sortedFiles = cluster.map { $0.measuringUniqueSize() }.sorted {
                                 $0.url.path.localizedStandardCompare($1.url.path)
                                     == .orderedAscending
                             }

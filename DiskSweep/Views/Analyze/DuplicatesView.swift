@@ -171,6 +171,12 @@ struct DuplicatesView: View {
                     .truncationMode(.middle)
             }
             Spacer()
+            if file.isMostlyShared, let unique = file.uniqueSize {
+                Text("\(FileSizeFormatter.string(fromByteCount: unique)) unique")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("This copy shares storage with an APFS clone, so removing it frees about this much.")
+            }
             if index == 0 && !selectedFileIDs.contains(file.id) {
                 Text("Keep")
                     .font(.caption.weight(.medium))

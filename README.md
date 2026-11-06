@@ -38,6 +38,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 - Hierarchical large-folder and disk-usage analysis rooted at the user's home directory.
 - Bundles (apps, virtual machines, Final Cut and iMovie libraries, sparse bundles, `.xcarchive` folders, and other packages) count toward their folder's total and appear as one item with their full size in Large Folders, Disk Usage, Large Files, and Downloads, controlled by **Settings > Exclusions > Treat bundles as single items**. Duplicates still skips them, and bundles in Downloads are shown for review but can't be cleaned. Photo libraries and Time Machine data remain fully excluded.
 - Downloads grouping for disk images, archives, installers, videos, images, documents, and other files, with age and size filters. Downloads are never preselected.
+- APFS clone awareness: Large Files and Duplicates read each result's private (unshared) size with `getattrlist(ATTR_CMNEXT_PRIVATESIZE)`. When most of a file shares storage with clones, the row shows how much is unique, which is about what removing it would free.
 - Staged duplicate detection: size grouping, partial sampling, SHA-256 hashing, and final byte-for-byte confirmation. Hard-link aliases are excluded and selection helpers preserve at least one copy.
 - Risk classification for regeneratable data, items needing review, and user-created files.
 

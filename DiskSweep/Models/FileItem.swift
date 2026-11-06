@@ -14,6 +14,9 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
     /// A bundle such as an app, a virtual machine, or a sparse bundle, sized as one item.
     /// Packages are shown but never offered for cleanup.
     let isPackage: Bool
+    /// Bytes not shared with any other file (APFS clones share blocks). Removing the file
+    /// frees about this much. `nil` when not measured.
+    let uniqueSize: Int64?
 
     init(
         id: UUID = UUID(),
@@ -26,7 +29,8 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
         accessedAt: Date? = nil,
         contentTypeIdentifier: String? = nil,
         isHidden: Bool = false,
-        isPackage: Bool = false
+        isPackage: Bool = false,
+        uniqueSize: Int64? = nil
     ) {
         self.id = id
         self.url = url
@@ -39,6 +43,25 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
         self.contentTypeIdentifier = contentTypeIdentifier
         self.isHidden = isHidden
         self.isPackage = isPackage
+        self.uniqueSize = uniqueSize.map { max(0, $0) }
+    }
+
+    /// A copy with its unique size measured with `PrivateSizeReader`. Packages and
+    /// directories keep `nil`.
+    func measuringUniqueSize() -> FileItem {
+        guard kind == .file, !isPackage else { return self }
+        return FileItem(
+            id: id, url: url, name: name, size: size, kind: kind,
+            createdAt: createdAt, modifiedAt: modifiedAt, accessedAt: accessedAt,
+            contentTypeIdentifier: contentTypeIdentifier, isHidden: isHidden,
+            isPackage: isPackage, uniqueSize: PrivateSizeReader.privateSize(of: url)
+        )
+    }
+
+    /// True when much of the file is shared with clones, so removing it frees less.
+    var isMostlyShared: Bool {
+        guard let uniqueSize, size > 0 else { return false }
+        return uniqueSize * 10 < size * 9
     }
 
     var fileExtension: String {
