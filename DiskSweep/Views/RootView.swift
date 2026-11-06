@@ -44,7 +44,11 @@ struct RootView: View {
             )
         ) {
             if let result = model.cleanupResult {
-                CleanupCompleteView(result: result, done: model.dismissCleanupResult)
+                CleanupCompleteView(
+                    result: result,
+                    done: model.dismissCleanupResult,
+                    reveal: model.revealInFinder
+                )
             }
         }
         .alert(

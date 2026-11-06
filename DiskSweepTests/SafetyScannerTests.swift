@@ -148,6 +148,32 @@ final class SafetyScannerTests: XCTestCase {
         XCTAssertEqual(result.category.totalSize, 0)
     }
 
+    /// 3.2: the reason an item can't be cleaned is its own field, not appended to the
+    /// category explanation, and deletable items have none.
+    func testNondeletableItemsCarryAnUnavailableReason() async throws {
+        let excludedDirectory = root.appendingPathComponent("Partial/Preserve", isDirectory: true)
+        try writeFile(relativePath: "Partial/Preserve/important.cache")
+        try writeFile(relativePath: "Plain/disposable.cache")
+
+        let result = await ProviderSupport.scanChildren(
+            providerID: "reason-test",
+            location: .temporaryFiles,
+            roots: [root],
+            context: ScanContext(exclusions: [excludedDirectory], snapshots: snapshots),
+            progress: { _ in },
+            forceDefaultSelection: false
+        )
+
+        let partial = try XCTUnwrap(result.items.first { $0.url.lastPathComponent == "Partial" })
+        XCTAssertFalse(partial.isDeletable)
+        XCTAssertEqual(partial.explanation, CleanupLocation.temporaryFiles.explanation)
+        XCTAssertTrue(partial.unavailableReason?.contains("excluded or uninspected content") == true)
+
+        let plain = try XCTUnwrap(result.items.first { $0.url.lastPathComponent == "Plain" })
+        XCTAssertTrue(plain.isDeletable)
+        XCTAssertNil(plain.unavailableReason)
+    }
+
     func testXcodeArchivesProviderEmitsIndividualArchivesNotDateContainers() async throws {
         let home = root.appendingPathComponent("Home", isDirectory: true)
         let archives = "Home/Library/Developer/Xcode/Archives"

@@ -6,6 +6,7 @@ struct CleanupCategoryCard: View {
     var searchText: String = ""
 
     @State private var isExpanded = false
+    @State private var showsIssues = false
 
     private var visibleItems: [CleanupItem] {
         guard !searchText.isEmpty else { return category.items }
@@ -41,12 +42,17 @@ struct CleanupCategoryCard: View {
                 }
 
                 if !category.issues.isEmpty {
-                    Label(
-                        "\(category.issues.count) location\(category.issues.count == 1 ? "" : "s") could not be read",
-                        systemImage: "lock.trianglebadge.exclamationmark"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    DisclosureGroup(isExpanded: $showsIssues) {
+                        IssueList(issues: category.issues)
+                            .padding(.top, 6)
+                    } label: {
+                        Label(
+                            "\(category.issues.count) location\(category.issues.count == 1 ? "" : "s") could not be read",
+                            systemImage: "lock.trianglebadge.exclamationmark"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                     .padding(.top, 12)
                 }
             }
@@ -142,6 +148,12 @@ struct CleanupCategoryCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .textSelection(.enabled)
+                }
+                if let reason = item.unavailableReason {
+                    Label(reason, systemImage: "nosign")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

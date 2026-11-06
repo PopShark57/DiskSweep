@@ -92,10 +92,13 @@ enum ProviderSupport {
                 var size = child.size
                 var fileCount = child.kind == .file ? 1 : 0
                 var isDeletable = child.kind == .file || child.kind == .directory
-                var explanation = location.explanation
+                let explanation = location.explanation
+                var unavailableReason: String? = isDeletable
+                    ? nil
+                    : "Only regular files and folders can be cleaned."
                 if FileSystemSafetyPolicy.excludes(child.url) {
                     isDeletable = false
-                    explanation += " This item is protected by DiskSweep's default scan exclusions."
+                    unavailableReason = "This item is protected by DiskSweep's default scan exclusions."
                 }
 
                 if child.kind == .directory {
@@ -126,7 +129,7 @@ enum ProviderSupport {
                         issues.append(contentsOf: measured.issues)
                         if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                             isDeletable = false
-                            explanation += " This folder contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
+                            unavailableReason = "This folder contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
                         }
                     } catch is CancellationError {
                         issues.append(ScanIssue(
@@ -138,7 +141,7 @@ enum ProviderSupport {
                     } catch {
                         issues.append(ScanIssue(error: error, at: child.url))
                         isDeletable = false
-                        explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
+                        unavailableReason = "DiskSweep could not inspect every descendant, so this folder cannot be removed."
                     }
                 }
 
@@ -147,6 +150,8 @@ enum ProviderSupport {
                 let identity = try? SafetyValidator.captureIdentity(at: child.url)
                 if identity == nil {
                     isDeletable = false
+                    unavailableReason = unavailableReason
+                        ?? "The item changed or disappeared before its cleanup identity could be recorded."
                     issues.append(ScanIssue(
                         kind: .disappeared,
                         path: child.url.path,
@@ -166,7 +171,8 @@ enum ProviderSupport {
                     risk: location.risk,
                     explanation: explanation,
                     isSelectedByDefault: forceDefaultSelection,
-                    isDeletable: isDeletable
+                    isDeletable: isDeletable,
+                    unavailableReason: unavailableReason
                 )
                 cleanupItems.append(cleanupItem)
                 if let identity {
@@ -287,7 +293,8 @@ enum ProviderSupport {
                     let baselineFiles = inspectedFiles
                     let baselineBytes = inspectedBytes
                     var isDeletable = true
-                    var explanation = candidate.explanation
+                    let explanation = candidate.explanation
+                    var unavailableReason: String?
                     var byteCount: Int64 = 0
                     var fileCount = 0
 
@@ -316,14 +323,14 @@ enum ProviderSupport {
                         issues.append(contentsOf: measured.issues)
                         if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                             isDeletable = false
-                            explanation += " It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
+                            unavailableReason = "It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
                         }
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
                         issues.append(ScanIssue(error: error, at: candidate.url))
                         isDeletable = false
-                        explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
+                        unavailableReason = "DiskSweep could not inspect every descendant, so this folder cannot be removed."
                     }
 
                     guard let identity = try? SafetyValidator.captureIdentity(at: candidate.url),
@@ -350,7 +357,8 @@ enum ProviderSupport {
                         risk: location.risk,
                         explanation: explanation,
                         detail: candidate.detail,
-                        isDeletable: isDeletable
+                        isDeletable: isDeletable,
+                        unavailableReason: unavailableReason
                     )
                     items.append(item)
                     snapshots[item.id] = CleanupScanSnapshot(

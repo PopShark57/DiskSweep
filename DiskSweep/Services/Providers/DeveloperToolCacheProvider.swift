@@ -111,7 +111,8 @@ struct DeveloperToolCacheProvider: CleanupProvider {
                 explanation: item.explanation,
                 detail: "\(cache.tool) downloads this again the next time it needs it.",
                 isSelectedByDefault: cache.needsReview ? false : item.isSelectedByDefault,
-                isDeletable: item.isDeletable
+                isDeletable: item.isDeletable,
+                unavailableReason: item.unavailableReason
             )
         }
         return ProviderScanResult(location: location, items: items, issues: result.issues)

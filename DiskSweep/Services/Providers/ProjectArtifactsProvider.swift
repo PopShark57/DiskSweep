@@ -299,7 +299,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
         onProgress: @escaping DirectorySizeProgressHandler
     ) async throws -> (item: CleanupItem, snapshot: CleanupScanSnapshot)? {
         var isDeletable = true
-        var explanation = candidate.kind.explanation
+        let explanation = candidate.kind.explanation
+        var unavailableReason: String?
         var byteCount: Int64 = 0
         var fileCount = 0
 
@@ -319,14 +320,14 @@ struct ProjectArtifactsProvider: CleanupProvider {
             issues.append(contentsOf: measured.issues)
             if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                 isDeletable = false
-                explanation += " It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
+                unavailableReason = "It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             issues.append(ScanIssue(error: error, at: candidate.url))
             isDeletable = false
-            explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
+            unavailableReason = "DiskSweep could not inspect every descendant, so this folder cannot be removed."
         }
 
         let identity: FileIdentity
@@ -365,7 +366,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
             explanation: explanation,
             detail: detail,
             isSelectedByDefault: false,
-            isDeletable: isDeletable
+            isDeletable: isDeletable,
+            unavailableReason: unavailableReason
         )
         return (
             item,

@@ -127,7 +127,8 @@ struct XcodeArchivesProvider: CleanupProvider {
             for archive in archives {
                 try Task.checkCancellation()
                 var isDeletable = true
-                var explanation = "One archived Xcode build. Archives may be needed for distribution or symbolication, so DiskSweep never selects them automatically."
+                var unavailableReason: String?
+                let explanation = "One archived Xcode build. Archives may be needed for distribution or symbolication, so DiskSweep never selects them automatically."
                 var byteCount: Int64 = 0
                 var fileCount = 0
                 let baselineFiles = inspectedFiles
@@ -156,14 +157,14 @@ struct XcodeArchivesProvider: CleanupProvider {
                     issues.append(contentsOf: measured.issues)
                     if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                         isDeletable = false
-                        explanation += " It contains excluded or uninspected content, so it cannot be removed as a unit."
+                        unavailableReason = "It contains excluded or uninspected content, so it cannot be removed as a unit."
                     }
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
                     issues.append(ScanIssue(error: error, at: archive.url))
                     isDeletable = false
-                    explanation += " DiskSweep could not inspect every descendant, so this archive cannot be removed."
+                    unavailableReason = "DiskSweep could not inspect every descendant, so this archive cannot be removed."
                 }
 
                 inspectedFiles += max(0, fileCount)
@@ -172,6 +173,8 @@ struct XcodeArchivesProvider: CleanupProvider {
                 let identity = try? SafetyValidator.captureIdentity(at: archive.url)
                 if identity == nil {
                     isDeletable = false
+                    unavailableReason = unavailableReason
+                        ?? "The archive changed or disappeared before its cleanup identity could be recorded."
                     issues.append(ScanIssue(
                         kind: .disappeared,
                         path: archive.url.path,
@@ -191,7 +194,8 @@ struct XcodeArchivesProvider: CleanupProvider {
                     risk: .reviewRecommended,
                     explanation: explanation,
                     isSelectedByDefault: false,
-                    isDeletable: isDeletable
+                    isDeletable: isDeletable,
+                    unavailableReason: unavailableReason
                 )
                 items.append(item)
                 if let identity {
@@ -345,7 +349,8 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
                 explanation: item.explanation,
                 detail: "Beta build replaced by release build \(release.build)",
                 isSelectedByDefault: item.isDeletable,
-                isDeletable: item.isDeletable
+                isDeletable: item.isDeletable,
+                unavailableReason: item.unavailableReason
             )
         }
         return ProviderScanResult(location: location, items: items, issues: result.issues)
