@@ -199,4 +199,20 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         XCTAssertEqual(folder.children.reduce(0) { $0 + $1.size } + folder.unlistedSize, folder.size)
         XCTAssertEqual(DirectoryNode(url: URL(fileURLWithPath: "/y"), size: 5, fileCount: 1).unlistedSize, 5)
     }
+
+    /// F10: chart slices are the largest folders, the rest merged, and the unlisted space,
+    /// and they add up to the folder total.
+    func testDiskUsageSlicesAddUpToTheFolderTotal() {
+        let children = (1...10).map {
+            DirectoryNode(url: URL(fileURLWithPath: "/x/f\($0)"), size: Int64($0 * 100), fileCount: 1)
+        }
+        let folder = DirectoryNode(url: URL(fileURLWithPath: "/x"), size: 6_000, fileCount: 10, children: children)
+
+        let slices = DiskUsageSlice.slices(for: folder, maximumFolders: 3)
+
+        XCTAssertEqual(slices.map(\.name), ["f10", "f9", "f8", "Other folders", "Files in this folder"])
+        XCTAssertEqual(slices.first { $0.kind == .otherFolders }?.size, 2_800)
+        XCTAssertEqual(slices.first { $0.kind == .filesInFolder }?.size, 500)
+        XCTAssertEqual(slices.reduce(0) { $0 + $1.size }, folder.size)
+    }
 }

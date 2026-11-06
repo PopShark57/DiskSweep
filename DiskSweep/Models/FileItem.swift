@@ -84,6 +84,42 @@ extension DirectoryNode {
     }
 }
 
+/// One slice of the Disk Usage chart.
+struct DiskUsageSlice: Identifiable, Hashable, Sendable {
+    enum Kind: Hashable, Sendable {
+        case folder
+        case otherFolders
+        case filesInFolder
+    }
+
+    let id: String
+    let name: String
+    let size: Int64
+    let kind: Kind
+
+    /// The largest children, then the rest merged into one "Other folders" slice, then the
+    /// space no listed child accounts for. Slices add up to the folder's size.
+    static func slices(for node: DirectoryNode, maximumFolders: Int = 7) -> [DiskUsageSlice] {
+        let sorted = node.children.sorted { $0.size > $1.size }
+        var slices = sorted.prefix(max(0, maximumFolders)).map {
+            DiskUsageSlice(id: $0.url.path, name: $0.name, size: $0.size, kind: .folder)
+        }
+        let rest = sorted.dropFirst(max(0, maximumFolders)).reduce(Int64(0)) { $0 + $1.size }
+        if rest > 0 {
+            slices.append(DiskUsageSlice(id: "other-folders", name: "Other folders", size: rest, kind: .otherFolders))
+        }
+        if node.unlistedSize > 0 {
+            slices.append(DiskUsageSlice(
+                id: "files-in-folder",
+                name: "Files in this folder",
+                size: node.unlistedSize,
+                kind: .filesInFolder
+            ))
+        }
+        return slices.filter { $0.size > 0 }
+    }
+}
+
 struct DuplicateGroup: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let fingerprint: String

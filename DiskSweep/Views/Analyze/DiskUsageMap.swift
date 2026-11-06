@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 /// The Map mode of Disk Usage: drill into folders, with proportional bars.
@@ -23,6 +24,8 @@ struct DiskUsageMap: View {
                 Spacer()
                 Button("Reveal in Finder") { reveal(currentNode.url) }
             }
+
+            UsageChart(slices: DiskUsageSlice.slices(for: currentNode))
 
             VStack(spacing: 10) {
                 ForEach(currentNode.children.sorted { $0.size > $1.size }) { child in
@@ -127,5 +130,29 @@ private struct UsageBar: View {
             }
         }
         .frame(height: 10)
+    }
+}
+
+/// A donut of the current folder's largest children and the space they don't account for.
+private struct UsageChart: View {
+    let slices: [DiskUsageSlice]
+
+    var body: some View {
+        if !slices.isEmpty {
+            Chart(slices) { slice in
+                SectorMark(
+                    angle: .value("Size", slice.size),
+                    innerRadius: .ratio(0.58),
+                    angularInset: 1.5
+                )
+                .cornerRadius(3)
+                .foregroundStyle(by: .value("Item", slice.name))
+                .accessibilityLabel(slice.name)
+                .accessibilityValue(FileSizeFormatter.string(fromByteCount: slice.size))
+            }
+            .chartLegend(position: .trailing, alignment: .center, spacing: 16)
+            .frame(height: 220)
+            .cardSurface(padding: 16)
+        }
     }
 }
