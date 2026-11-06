@@ -61,6 +61,20 @@ The native SwiftUI application coordinator connects sidebar navigation, real sca
 
 The interface uses standard macOS navigation, materials, menus, shortcuts, light/dark appearance, selection controls, and accessibility labels. A cancelled cleanup scan retains completed categories and labels them as partial results rather than presenting them as a complete scan. **Cancel Scan** is available only while a scan runs, and starting a new scan right after cancelling waits for the cancelled one to stop, so the two never mix results.
 
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘R | Scan |
+| ⌘. | Cancel Scan (only while a scan runs) |
+| ⌘F | Find (focus the search field) |
+| ⌘Y | Quick Look the selected file |
+| Space | Quick Look, when the Large Files table has focus |
+| ⇧⌘F | Reveal the selected file in Finder |
+| ⌘, | Settings |
+
+Space and Esc are never menu shortcuts, so they keep working in search fields.
+
 ## Screenshots
 
 ![DiskSweep overview](docs/images/disksweep-overview.png)

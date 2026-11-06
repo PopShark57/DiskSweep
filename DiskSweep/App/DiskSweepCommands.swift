@@ -30,10 +30,10 @@ struct DiskSweepCommands: Commands {
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(actions == nil || actions?.isScanning == true)
 
-            // Enabled only while a scan runs, so the key never relabels a finished scan as
-            // partial or takes the key away from a focused text field.
+            // Enabled only while a scan runs, so it never relabels a finished scan as partial.
+            // ⌘. rather than Esc, so Esc still clears a focused search field.
             Button("Cancel Scan") { actions?.cancelScan() }
-                .keyboardShortcut(.cancelAction)
+                .keyboardShortcut(".", modifiers: .command)
                 .disabled(actions?.isScanning != true)
 
             Divider()
@@ -44,8 +44,10 @@ struct DiskSweepCommands: Commands {
 
         CommandGroup(after: .textEditing) {
             Divider()
+            // ⌘Y, as in Finder. A bare Space menu equivalent would swallow spaces typed in
+            // search fields; lists and tables handle Space themselves.
             Button("Quick Look") { actions?.quickLook() }
-                .keyboardShortcut(" ", modifiers: [])
+                .keyboardShortcut("y", modifiers: .command)
                 .disabled(actions == nil)
 
             Button("Reveal in Finder") { actions?.revealInFinder() }

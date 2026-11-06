@@ -177,6 +177,12 @@ struct LargeFilesView: View {
                         quickLook(file.url)
                     }
                 }
+                // Space previews the selected row only while the table has focus.
+                .onKeyPress(.space) {
+                    guard let selectedFile else { return .ignored }
+                    quickLook(selectedFile.url)
+                    return .handled
+                }
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search files")
