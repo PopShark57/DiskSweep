@@ -462,16 +462,9 @@ final class AppViewModel {
         return items.filter { item in
             let candidate = item.url.standardizedFileURL
             return !otherRoots.contains { root in
-                candidate == root || isStrictAncestor(candidate, of: root)
+                candidate == root || root.isStrictDescendant(of: candidate)
             }
         }
-    }
-
-    private func isStrictAncestor(_ candidate: URL, of descendant: URL) -> Bool {
-        let lhs = candidate.pathComponents
-        let rhs = descendant.pathComponents
-        guard lhs.count < rhs.count else { return false }
-        return Array(rhs.prefix(lhs.count)) == lhs
     }
 
     private func locationOrder(_ location: CleanupLocation) -> Int {

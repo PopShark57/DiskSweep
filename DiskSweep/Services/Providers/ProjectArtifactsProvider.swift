@@ -176,7 +176,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         // A folder nested inside another chosen folder is already covered by its parent.
         roots = roots.filter { root in
             !roots.contains { other in
-                other != root && Self.isStrictDescendant(root, of: other)
+                other != root && root.isStrictDescendant(of: other)
             }
         }
 
@@ -428,8 +428,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
                 let pathExtension = url.pathExtension.lowercased()
 
                 if normalizedExclusions.contains(where: {
-                    Self.isSameOrDescendant(url, of: $0)
-                        || Self.isSameOrDescendant(url.resolvingSymlinksInPath(), of: $0)
+                    url.isSameOrDescendant(of: $0)
+                        || url.resolvingSymlinksInPath().isSameOrDescendant(of: $0)
                 }) || FileSystemSafetyPolicy.excludedExtensions.contains(pathExtension)
                     || pathExtension == "icloud" {
                     enumerator.skipDescendants()
@@ -508,17 +508,5 @@ struct ProjectArtifactsProvider: CleanupProvider {
             if directory.pathComponents.count == rootComponentCount { return }
             directory = directory.deletingLastPathComponent()
         }
-    }
-
-    private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
-    }
-
-    private static func isStrictDescendant(_ candidate: URL, of root: URL) -> Bool {
-        candidate.pathComponents.count > root.pathComponents.count
-            && isSameOrDescendant(candidate, of: root)
     }
 }

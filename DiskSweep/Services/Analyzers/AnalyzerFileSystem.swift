@@ -220,7 +220,7 @@ enum AnalyzerFileSystem {
     ) -> Bool {
         let standardizedURL = url.standardizedFileURL
 
-        if context.exclusions.contains(where: { contains(standardizedURL, in: $0) }) {
+        if context.exclusions.contains(where: { standardizedURL.isSameOrDescendant(of: $0) }) {
             return true
         }
 
@@ -351,18 +351,10 @@ enum AnalyzerFileSystem {
         ).values.sorted { $0.path.count < $1.path.count }
 
         var result: [URL] = []
-        for candidate in unique where !result.contains(where: { contains(candidate, in: $0) }) {
+        for candidate in unique where !result.contains(where: { candidate.isSameOrDescendant(of: $0) }) {
             result.append(candidate)
         }
         return result
-    }
-
-    private static func contains(_ candidate: URL, in root: URL) -> Bool {
-        let candidatePath = candidate.standardizedFileURL.path
-        let rootPath = root.standardizedFileURL.path
-        guard candidatePath != rootPath else { return true }
-        let prefix = rootPath == "/" ? "/" : rootPath + "/"
-        return candidatePath.hasPrefix(prefix)
     }
 
     private static func isTimeMachinePath(_ url: URL) -> Bool {
