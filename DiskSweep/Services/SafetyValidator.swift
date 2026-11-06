@@ -92,16 +92,54 @@ struct SafetyValidator: Sendable {
     private let temporaryDirectory: URL
     private let additionalProtectedLocations: [URL]
 
+    /// Protected roots as standardized path components, computed once so `isProtected`
+    /// allocates no URLs. The pre-delete walk calls it for every descendant.
+    private let protectedSystemComponents: [[String]]
+    private let privateComponents: [String]
+    private let temporaryComponents: [String]
+    private let protectedHomeComponents: [[String]]
+    private let applicationSupportComponents: [String]
+    private let additionalProtectedComponents: [[String]]
+
+    static let protectedSystemPaths = [
+        "/System", "/Library", "/Applications", "/bin", "/sbin", "/usr", "/Volumes"
+    ]
+
+    static let protectedHomeRelativePaths = [
+        "Desktop", "Documents", "Pictures", "Music", "Movies",
+        ".ssh", ".gnupg", "Library/Keychains", "Library/Mail",
+        "Library/Messages", "Library/Photos", "Library/Safari",
+        "Library/Cookies", "Library/Accounts", "Library/Calendars",
+        "Library/CloudStorage", "Library/Application Support/MobileSync"
+    ]
+
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory,
         additionalProtectedLocations: [URL] = []
     ) {
-        self.homeDirectory = homeDirectory.standardizedFileURL.resolvingSymlinksInPath()
-        self.temporaryDirectory = temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath()
-        self.additionalProtectedLocations = additionalProtectedLocations.map {
+        let home = homeDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        let temporary = temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        let additional = additionalProtectedLocations.map {
             $0.standardizedFileURL.resolvingSymlinksInPath()
         }
+        self.homeDirectory = home
+        self.temporaryDirectory = temporary
+        self.additionalProtectedLocations = additional
+
+        func components(_ url: URL) -> [String] { url.standardizedFileURL.pathComponents }
+        protectedSystemComponents = Self.protectedSystemPaths.map {
+            components(URL(fileURLWithPath: $0, isDirectory: true))
+        }
+        privateComponents = components(URL(fileURLWithPath: "/private", isDirectory: true))
+        temporaryComponents = components(temporary)
+        protectedHomeComponents = Self.protectedHomeRelativePaths.map {
+            components(home.appendingPathComponent($0, isDirectory: true))
+        }
+        applicationSupportComponents = components(
+            home.appendingPathComponent("Library/Application Support", isDirectory: true)
+        )
+        additionalProtectedComponents = additional.map(components)
     }
 
     func validate(_ target: URL, allowedRoots: [URL]) throws -> ValidatedCleanupTarget {
@@ -220,6 +258,9 @@ struct SafetyValidator: Sendable {
             throw SafetyValidationError.excludedContent(validated.deletionURL.path)
         }
         guard validated.identity.kind == .directory else { return }
+        let exclusionComponents = normalizedExclusions.map {
+            $0.standardizedFileURL.pathComponents
+        }
 
         let manager = FileManager()
         var enumerationError: Error?
@@ -238,6 +279,7 @@ struct SafetyValidator: Sendable {
         while let candidate = enumerator.nextObject() as? URL {
             if Task.isCancelled { throw CancellationError() }
             let standardized = candidate.standardizedFileURL
+            let components = standardized.pathComponents
             let name = standardized.lastPathComponent.lowercased()
             let pathExtension = standardized.pathExtension.lowercased()
 
@@ -246,9 +288,7 @@ struct SafetyValidator: Sendable {
                     || FileSystemSafetyPolicy.excludes(standardized))
             if isExcludedByPolicy
                 || FileSystemSafetyPolicy.excludedExtensions.contains(pathExtension)
-                || normalizedExclusions.contains(where: {
-                    standardized.isSameOrDescendant(of: $0)
-                }) {
+                || exclusionComponents.contains(where: { Self.hasPrefix(components, $0) }) {
                 throw SafetyValidationError.excludedContent(standardized.path)
             }
 
@@ -260,7 +300,10 @@ struct SafetyValidator: Sendable {
             guard identity.device == validated.identity.device else {
                 throw SafetyValidationError.volumeBoundary(standardized.path)
             }
-            if isProtected(standardized.resolvingSymlinksInPath()) {
+            // No symlink resolution is needed here: the walk starts at the resolved target,
+            // never descends into a symbolic link (skipped above), and stays on one volume,
+            // so every entry's path is already its resolved path.
+            if isProtected(components: components) {
                 throw SafetyValidationError.protectedLocation(standardized.path)
             }
         }
@@ -519,59 +562,68 @@ struct SafetyValidator: Sendable {
         return false
     }
 
-    private func isProtected(_ url: URL) -> Bool {
-        if url.path == "/" { return true }
+    func isProtected(_ url: URL) -> Bool {
+        // The name check also runs on the raw components, as before 5.3, so a path that
+        // mentions a photo library or backup store before a `..` is still protected.
+        isProtected(components: url.standardizedFileURL.pathComponents)
+            || Self.containsProtectedStoreName(url.pathComponents)
+    }
 
-        let protectedSystemPaths = [
-            "/System", "/Library", "/Applications", "/bin", "/sbin",
-            "/usr", "/Volumes"
-        ].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    /// `components` are a standardized path's components. Comparisons are by whole component,
+    /// case-insensitive except for the temporary directory, as before 5.3.
+    func isProtected(components: [String]) -> Bool {
+        if components == ["/"] { return true }
 
-        if protectedSystemPaths.contains(where: {
-            url.isSameOrDescendantIgnoringCase(of: $0)
+        if protectedSystemComponents.contains(where: {
+            Self.hasPrefixIgnoringCase(components, $0)
         }) {
             return true
         }
 
-        let privateRoot = URL(fileURLWithPath: "/private", isDirectory: true)
-        if url.isSameOrDescendantIgnoringCase(of: privateRoot),
-           !url.isSameOrDescendant(of: temporaryDirectory) {
+        if Self.hasPrefixIgnoringCase(components, privateComponents),
+           !Self.hasPrefix(components, temporaryComponents) {
             return true
         }
 
-        let protectedHomePaths = [
-            "Desktop", "Documents", "Pictures", "Music", "Movies",
-            ".ssh", ".gnupg", "Library/Keychains", "Library/Mail",
-            "Library/Messages", "Library/Photos", "Library/Safari",
-            "Library/Cookies", "Library/Accounts", "Library/Calendars",
-            "Library/CloudStorage", "Library/Application Support/MobileSync"
-        ].map { homeDirectory.appendingPathComponent($0, isDirectory: true) }
-
-        if protectedHomePaths.contains(where: {
-            url.isSameOrDescendantIgnoringCase(of: $0)
+        if protectedHomeComponents.contains(where: {
+            Self.hasPrefixIgnoringCase(components, $0)
         }) {
             return true
         }
 
-        let applicationSupport = homeDirectory
-            .appendingPathComponent("Library/Application Support", isDirectory: true)
-        if url.path.caseInsensitiveCompare(applicationSupport.path) == .orderedSame {
+        if components.count == applicationSupportComponents.count,
+           Self.hasPrefixIgnoringCase(components, applicationSupportComponents) {
             return true
         }
 
-        if additionalProtectedLocations.contains(where: {
-            url.isSameOrDescendantIgnoringCase(of: $0)
+        if additionalProtectedComponents.contains(where: {
+            Self.hasPrefixIgnoringCase(components, $0)
         }) {
             return true
         }
 
-        let components = url.pathComponents.map { $0.lowercased() }
-        return components.contains(where: {
-            $0.hasSuffix(".photoslibrary")
-                || $0.hasSuffix(".photolibrary")
-                || $0 == "backups.backupdb"
-                || $0 == ".mobilebackups"
-        })
+        return Self.containsProtectedStoreName(components)
+    }
+
+    /// Photo libraries and backup stores are protected wherever they appear.
+    private static func containsProtectedStoreName(_ components: [String]) -> Bool {
+        components.contains { component in
+            let lowercased = component.lowercased()
+            return lowercased.hasSuffix(".photoslibrary")
+                || lowercased.hasSuffix(".photolibrary")
+                || lowercased == "backups.backupdb"
+                || lowercased == ".mobilebackups"
+        }
+    }
+
+    private static func hasPrefix(_ components: [String], _ prefix: [String]) -> Bool {
+        components.count >= prefix.count && zip(components, prefix).allSatisfy { $0 == $1 }
+    }
+
+    private static func hasPrefixIgnoringCase(_ components: [String], _ prefix: [String]) -> Bool {
+        components.count >= prefix.count && zip(components, prefix).allSatisfy {
+            $0.caseInsensitiveCompare($1) == .orderedSame
+        }
     }
 
     private static func isRecognizedCacheRoot(_ url: URL) -> Bool {
