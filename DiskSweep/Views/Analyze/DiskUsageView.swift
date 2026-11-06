@@ -1,62 +1,73 @@
 import SwiftUI
 
+/// Large Folders and Disk Usage share one analysis, so they're one screen with two modes.
 struct DiskUsageView: View {
+    enum Mode: String, CaseIterable, Identifiable {
+        case list
+        case map
+
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .list: "List"
+            case .map: "Map"
+            }
+        }
+    }
+
     let root: DirectoryNode?
     let isScanning: Bool
     let scan: () -> Void
     let cancel: () -> Void
     let reveal: (URL) -> Void
 
-    @State private var path: [DirectoryNode] = []
-
-    private var currentNode: DirectoryNode? { path.last ?? root }
+    @State private var mode: Mode = .list
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 PageHeader(
                     title: "Disk Usage",
-                    subtitle: "Drill into a proportional, hierarchical view of your home folder.",
+                    subtitle: "See which folders in your home folder use the most space, as a list or a map. Nothing is changed.",
                     symbol: "chart.pie"
                 )
 
-                if isScanning {
-                    HStack {
-                        ProgressView()
-                        Text("Building disk usage map…")
+                HStack(spacing: 12) {
+                    Picker("View", selection: $mode) {
+                        ForEach(Mode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 180)
+
+                    Spacer()
+
+                    if isScanning {
+                        ProgressView().controlSize(.small)
+                        Text("Calculating folder sizes…")
                             .foregroundStyle(.secondary)
-                        Spacer()
                         Button("Cancel", role: .cancel, action: cancel)
+                    } else {
+                        Button(root == nil ? "Analyze Home Folder" : "Rescan", action: scan)
+                            .buttonStyle(.borderedProminent)
                     }
-                    .cardSurface()
-                } else if let currentNode {
-                    breadcrumbs(root: root, path: path)
+                }
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(currentNode.name)
-                                .font(.title2.weight(.semibold))
-                            Text("\(FileSizeFormatter.string(fromByteCount: currentNode.size)) • \(currentNode.fileCount.formatted()) files")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("Reveal in Finder") { reveal(currentNode.url) }
+                if let root, !isScanning {
+                    switch mode {
+                    case .list:
+                        FolderTreeList(roots: root.children, reveal: reveal)
+                    case .map:
+                        DiskUsageMap(root: root, reveal: reveal)
                     }
-
-                    VStack(spacing: 10) {
-                        ForEach(currentNode.children.sorted { $0.size > $1.size }) { child in
-                            usageRow(child, parentSize: currentNode.size)
-                        }
-                        if currentNode.unlistedSize > 0 {
-                            unlistedRow(size: currentNode.unlistedSize, parentSize: currentNode.size)
-                        }
-                    }
-                } else {
+                } else if !isScanning {
                     EmptyAnalysisView(
-                        title: "No Disk Map Yet",
-                        message: "Analyze your home folder to see which directories use the most space.",
+                        title: "No Folder Analysis Yet",
+                        message: "Analyze your home folder to build a browsable size tree and map.",
                         symbol: "chart.pie",
-                        buttonTitle: "Build Disk Map",
+                        buttonTitle: "Analyze Home Folder",
                         action: scan
                     )
                     .frame(maxWidth: .infinity, minHeight: 420)
@@ -65,99 +76,5 @@ struct DiskUsageView: View {
             .padding(28)
             .frame(maxWidth: 1040, alignment: .leading)
         }
-        .onChange(of: root?.id) { _, _ in path.removeAll() }
-    }
-
-    private func breadcrumbs(root: DirectoryNode?, path: [DirectoryNode]) -> some View {
-        HStack(spacing: 6) {
-            Button(root?.name ?? "Home") { self.path.removeAll() }
-                .buttonStyle(.link)
-            ForEach(Array(path.enumerated()), id: \.element.id) { index, node in
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Button(node.name) {
-                    self.path = Array(self.path.prefix(index + 1))
-                }
-                .buttonStyle(.link)
-            }
-            Spacer()
-        }
-        .font(.callout)
-    }
-
-    /// A row that can't be opened: files stored directly in this folder, and subfolders too
-    /// small to list.
-    private func unlistedRow(size: Int64, parentSize: Int64) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Label("Files in this folder", systemImage: "doc.on.doc")
-                    .font(.headline)
-                Spacer()
-                Text(FileSizeFormatter.string(fromByteCount: size))
-                    .font(.headline)
-                    .monospacedDigit()
-            }
-            UsageBar(fraction: Double(size) / Double(max(1, parentSize)))
-            Text("Includes smaller folders that aren't listed • \((Double(size) / Double(max(1, parentSize))).formatted(.percent.precision(.fractionLength(1)))) of this folder")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .cardSurface(padding: 14)
-    }
-
-    private func usageRow(_ node: DirectoryNode, parentSize: Int64) -> some View {
-        Button {
-            guard !node.children.isEmpty else {
-                reveal(node.url)
-                return
-            }
-            path.append(node)
-        } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack {
-                    Label(node.name, systemImage: "folder.fill")
-                        .font(.headline)
-                    Spacer()
-                    Text(FileSizeFormatter.string(fromByteCount: node.size))
-                        .font(.headline)
-                        .monospacedDigit()
-                    Image(systemName: node.children.isEmpty ? "arrow.up.forward.app" : "chevron.right")
-                        .foregroundStyle(.tertiary)
-                }
-
-                UsageBar(fraction: Double(node.size) / Double(max(1, parentSize)))
-
-                Text("\(node.fileCount.formatted()) files • \((Double(node.size) / Double(max(1, parentSize))).formatted(.percent.precision(.fractionLength(1)))) of this folder")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .cardSurface(padding: 14)
-    }
-}
-
-private struct UsageBar: View {
-    let fraction: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.07))
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.diskSweepBlue, .diskSweepTeal],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: proxy.size.width * min(1, max(0, fraction)))
-            }
-        }
-        .frame(height: 10)
     }
 }

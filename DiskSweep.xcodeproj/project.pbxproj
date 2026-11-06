@@ -11,6 +11,7 @@
 		016CD8AA1765888A8C307679 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA056D924C6FF1BF88816A14 /* OverviewView.swift */; };
 		090AD32E8CA11EB35201C970 /* LossyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C075B2E6ADFA601FC63B9F /* LossyCodable.swift */; };
 		093FFBA1B0C6C9679A65A9C6 /* SidebarDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9AE05BEB9E7A1BC30D7AD88 /* SidebarDestination.swift */; };
+		094066909478206185A12F39 /* DiskUsageMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3F497B83B415BC3DD4E506 /* DiskUsageMap.swift */; };
 		0DC6A2B2164E3982DADA6837 /* FileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D4212B28E8E230EB93F36A /* FileSystemScanner.swift */; };
 		102079302782C3B56B095927 /* LargeFileAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263F2D18EA3A40B1E637AA3C /* LargeFileAnalyzer.swift */; };
 		113AF11F06CAF4714610F739 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D62BA69BEBA6771736F041D2 /* SettingsStoreTests.swift */; };
@@ -78,6 +79,7 @@
 		B84C916DB08B3D963ADC04EA /* CleanupCategoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3129452FE7B4EEDDC0F006 /* CleanupCategoryCard.swift */; };
 		BBDE231F7DD7E9BA8413AE44 /* DuplicateAnalyzerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0945C501630D4B045F069AD7 /* DuplicateAnalyzerTests.swift */; };
 		BC07A7188BF5ECD2598C7B29 /* LargeFolderAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA58D8A6A8EBF030DE32687C /* LargeFolderAnalyzer.swift */; };
+		C32093F396AEF3A93F62C2D6 /* FolderTreeList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CA926111E8D2228F5F3BD52 /* FolderTreeList.swift */; };
 		C6945E7AE7BC3A179D036841 /* SafetyValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */; };
 		C8A427E3152DE84865E9F475 /* DiskService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64C98CAFEB3917042AAE6FB6 /* DiskService.swift */; };
 		C8FB78F6C6C1C9CA6D80B48E /* SwiftPackageCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611F715D94B12723434AC0AC /* SwiftPackageCacheProvider.swift */; };
@@ -101,7 +103,6 @@
 		F8ABA1F823DB1432D6C87A1E /* DuplicateAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F841B9A8EDF410A9A4BE9A /* DuplicateAnalyzer.swift */; };
 		F985A0D7F4FF63BD50144AF1 /* DiskUsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CBF9CB608841108AB7B89CD /* DiskUsageView.swift */; };
 		FD0384B77A08A52126D764DA /* ProviderSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA0A2C06A65BDEF997A397C5 /* ProviderSupport.swift */; };
-		FE4BCAA65BD1BB72780D8C37 /* LargeFoldersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90136DD98427F68CE6F2390 /* LargeFoldersView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,6 +126,7 @@
 		17676657F02213A935EFE183 /* ScanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanModels.swift; sourceTree = "<group>"; };
 		18F3AB15B2C66BB5D0B6081F /* CleanupCompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCompleteView.swift; sourceTree = "<group>"; };
 		1BCAF8DC6DFBA498336C28F8 /* DiskSweepApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskSweepApp.swift; sourceTree = "<group>"; };
+		1CA926111E8D2228F5F3BD52 /* FolderTreeList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderTreeList.swift; sourceTree = "<group>"; };
 		20EF638042E2081CC785C8BD /* IssueListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IssueListTests.swift; sourceTree = "<group>"; };
 		211B878BDE1255C18710B6FD /* URL+Containment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+Containment.swift"; sourceTree = "<group>"; };
 		24858CF36BD326D6CE7ACD23 /* DownloadsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsProvider.swift; sourceTree = "<group>"; };
@@ -161,6 +163,7 @@
 		6A971D2A9675F8BED1BEFA24 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		6C0711D133676A963B511DC9 /* AnalyzerTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzerTestSupport.swift; sourceTree = "<group>"; };
 		6E7AB9F3D1F3D0CB4FC7C495 /* LargeFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFilesView.swift; sourceTree = "<group>"; };
+		6F3F497B83B415BC3DD4E506 /* DiskUsageMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskUsageMap.swift; sourceTree = "<group>"; };
 		7017E38FB8324CFE93D16DA6 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		70C41C31BFCFD107D9698C92 /* CleanupListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupListView.swift; sourceTree = "<group>"; };
 		7124A00EEBE462974F620C75 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
@@ -191,7 +194,6 @@
 		C0F471795CEC4A31D575AB02 /* CleanupScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupScope.swift; sourceTree = "<group>"; };
 		C2482816FE2115D26E1514BE /* ScanCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCancellationTests.swift; sourceTree = "<group>"; };
 		C75823D2C3CC63D99A6252A6 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
-		C90136DD98427F68CE6F2390 /* LargeFoldersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFoldersView.swift; sourceTree = "<group>"; };
 		CC0B5A9FCF2FA066124275C5 /* TrashProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashProvider.swift; sourceTree = "<group>"; };
 		CDFC370F032336BD60D5ACD4 /* DeveloperToolCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperToolCacheProvider.swift; sourceTree = "<group>"; };
 		D0CD2AC480138C99D0EA5895 /* FileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileItem.swift; sourceTree = "<group>"; };
@@ -392,10 +394,11 @@
 		D383B2AE0BB5EFF69FD4A497 /* Analyze */ = {
 			isa = PBXGroup;
 			children = (
+				6F3F497B83B415BC3DD4E506 /* DiskUsageMap.swift */,
 				2CBF9CB608841108AB7B89CD /* DiskUsageView.swift */,
 				901A2006E7791D300F8FB75C /* DuplicatesView.swift */,
+				1CA926111E8D2228F5F3BD52 /* FolderTreeList.swift */,
 				6E7AB9F3D1F3D0CB4FC7C495 /* LargeFilesView.swift */,
-				C90136DD98427F68CE6F2390 /* LargeFoldersView.swift */,
 			);
 			path = Analyze;
 			sourceTree = "<group>";
@@ -567,6 +570,7 @@
 				8F9F83C74E2E953E32A116C8 /* DiskStatistics.swift in Sources */,
 				3F70B44FAA9D3CCA13992BFA /* DiskSweepApp.swift in Sources */,
 				A099ED2720866FB9677054A3 /* DiskSweepCommands.swift in Sources */,
+				094066909478206185A12F39 /* DiskUsageMap.swift in Sources */,
 				F985A0D7F4FF63BD50144AF1 /* DiskUsageView.swift in Sources */,
 				528C4578D39DFA14675C928B /* DownloadsAnalyzer.swift in Sources */,
 				A15A85E492B8131E62C54448 /* DownloadsProvider.swift in Sources */,
@@ -578,13 +582,13 @@
 				DB73E348DC1831EC7DBFE952 /* FileSizeFormatter.swift in Sources */,
 				0DC6A2B2164E3982DADA6837 /* FileSystemScanner.swift in Sources */,
 				12F9C89C008A8FDE9F4055F1 /* FinderService.swift in Sources */,
+				C32093F396AEF3A93F62C2D6 /* FolderTreeList.swift in Sources */,
 				683A66AA06E09CD3A76AC24B /* HistoryView.swift in Sources */,
 				CC5B26B88ACC18B1B261E0CB /* HomebrewCacheProvider.swift in Sources */,
 				A0A4966499DF191DD64D5988 /* IssueList.swift in Sources */,
 				102079302782C3B56B095927 /* LargeFileAnalyzer.swift in Sources */,
 				635465BD9BF9E7E418E146CD /* LargeFilesView.swift in Sources */,
 				BC07A7188BF5ECD2598C7B29 /* LargeFolderAnalyzer.swift in Sources */,
-				FE4BCAA65BD1BB72780D8C37 /* LargeFoldersView.swift in Sources */,
 				ADF83CA20D5663CDF500DAB4 /* Log.swift in Sources */,
 				F0434DC74C79C203145C433F /* LogProvider.swift in Sources */,
 				090AD32E8CA11EB35201C970 /* LossyCodable.swift in Sources */,

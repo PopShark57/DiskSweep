@@ -80,6 +80,13 @@ struct RootView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 5) {
                 Divider()
+                // Settings live in their own window (⌘,), not in the detail column.
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
                 HStack(spacing: 7) {
                     Image(systemName: "internaldrive")
                         .foregroundStyle(.secondary)
@@ -214,15 +221,6 @@ struct RootView: View {
                 quickLook: model.quickLook
             )
 
-        case .largeFolders:
-            LargeFoldersView(
-                roots: model.largeFolderRoot?.children ?? [],
-                isScanning: model.isAnalyzing(.folders),
-                scan: model.startFolderAnalysis,
-                cancel: model.cancelAnalysis,
-                reveal: model.revealInFinder
-            )
-
         case .duplicates:
             DuplicatesView(
                 groups: model.duplicateGroups,
@@ -247,13 +245,6 @@ struct RootView: View {
             HistoryView(
                 entries: model.history.entries,
                 persistenceError: model.history.lastPersistenceError
-            )
-
-        case .settings:
-            SettingsView(
-                settings: model.settings,
-                permissions: model.permissions,
-                homeDirectory: model.homeDirectory
             )
         }
     }

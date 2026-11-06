@@ -1,57 +1,18 @@
 import SwiftUI
 
-struct LargeFoldersView: View {
+/// The List mode of Disk Usage: an expandable tree of the largest folders.
+struct FolderTreeList: View {
     let roots: [DirectoryNode]
-    let isScanning: Bool
-    let scan: () -> Void
-    let cancel: () -> Void
     let reveal: (URL) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                PageHeader(
-                    title: "Large Folders",
-                    subtitle: "Explore the largest directories in your home folder without changing their contents.",
-                    symbol: "folder.badge.questionmark"
-                )
-
-                HStack {
-                    if isScanning {
-                        ProgressView()
-                        Text("Calculating folder sizes…")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Cancel", role: .cancel, action: cancel)
-                    } else {
-                        Spacer()
-                        Button("Analyze Home Folder", action: scan)
-                            .buttonStyle(.borderedProminent)
-                    }
-                }
-
-                if roots.isEmpty && !isScanning {
-                    EmptyAnalysisView(
-                        title: "No Folder Analysis Yet",
-                        message: "Analyze your home folder to build a browsable size tree.",
-                        symbol: "folder.badge.questionmark",
-                        buttonTitle: "Analyze Home Folder",
-                        action: scan
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 420)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(roots.sorted { $0.size > $1.size }) { node in
-                            DirectoryNodeRow(node: node, depth: 0, reveal: reveal)
-                            if node.id != roots.last?.id { Divider() }
-                        }
-                    }
-                    .cardSurface(padding: 0)
-                }
+        VStack(spacing: 0) {
+            ForEach(roots.sorted { $0.size > $1.size }) { node in
+                DirectoryNodeRow(node: node, depth: 0, reveal: reveal)
+                if node.id != roots.last?.id { Divider() }
             }
-            .padding(28)
-            .frame(maxWidth: 1040, alignment: .leading)
         }
+        .cardSurface(padding: 0)
     }
 }
 
@@ -78,7 +39,7 @@ private struct DirectoryNodeRow: View {
                     .accessibilityLabel(isExpanded ? "Collapse \(node.name)" : "Expand \(node.name)")
                 }
 
-                Image(systemName: "folder.fill")
+                Image(systemName: node.isPackage ? "shippingbox.fill" : "folder.fill")
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.name)
