@@ -48,7 +48,15 @@ final class AppViewModel {
     @ObservationIgnored let snapshots: CleanupSnapshotRegistry
     @ObservationIgnored private let finderService: FinderService
     @ObservationIgnored private var cleanupScanTask: Task<Void, Never>?
+    /// A cancelled scan that may still be finishing its current provider. The next scan waits
+    /// for it, so the two never run providers at the same time.
+    @ObservationIgnored private var retiredScanTask: Task<Void, Never>?
+    /// Incremented whenever a scan starts or is cancelled. A scan task only changes state
+    /// while its generation is current, so a cancelled scan can't touch a newer one.
+    @ObservationIgnored private var scanGeneration = 0
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
+    @ObservationIgnored private var retiredAnalysisTask: Task<Void, Never>?
+    @ObservationIgnored private var analysisGeneration = 0
     @ObservationIgnored private var cleanupTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
 
@@ -137,6 +145,10 @@ final class AppViewModel {
     func startCleanupScan() {
         guard cleanupScanTask == nil, !isCleaning else { return }
         cancelAnalysis()
+        scanGeneration += 1
+        let generation = scanGeneration
+        let previousScan = retiredScanTask
+        retiredScanTask = nil
         lastScanWasCancelled = false
         cleanupScanProgress = ScanProgress(
             phase: .preparing,
@@ -149,7 +161,11 @@ final class AppViewModel {
         )
 
         cleanupScanTask = Task { [weak self] in
-            guard let self else { return }
+            // A cancelled scan may still be inside a provider. Let it finish first, so its
+            // cancellation cleanup can't erase snapshots this scan records.
+            await previousScan?.value
+            guard let self, generation == scanGeneration else { return }
+
             let enabledLocations = settings.effectiveScanLocations
             let scanProviders = providers.filter {
                 enabledLocations.contains($0.location) && $0.location != .downloads
@@ -172,6 +188,7 @@ final class AppViewModel {
                 let result = await provider.scan(context: makeScanContext()) { [weak self] update in
                     await self?.applyCleanupProgress(
                         update,
+                        generation: generation,
                         priorFiles: priorFiles,
                         priorBytes: priorBytes,
                         completedProviders: priorCompleted,
@@ -179,6 +196,8 @@ final class AppViewModel {
                     )
                 }
 
+                // Every await is a point where this scan may have been cancelled or replaced.
+                guard generation == scanGeneration else { return }
                 if Task.isCancelled { break }
                 let filteredItems = removeProviderOverlaps(
                     result.items,
@@ -209,8 +228,10 @@ final class AppViewModel {
                     totalProviders: scanProviders.count
                 )
                 await refreshDiskStatistics()
+                guard generation == scanGeneration else { return }
             }
 
+            guard generation == scanGeneration else { return }
             if !Task.isCancelled {
                 lastScanDate = Date()
                 lastScanWasCancelled = false
@@ -223,11 +244,16 @@ final class AppViewModel {
         }
     }
 
+    /// Cancels a running scan. Does nothing when no scan is running, so a completed scan is
+    /// never relabeled as partial.
     func cancelCleanupScan() {
-        cleanupScanTask?.cancel()
-        lastScanWasCancelled = true
+        guard let task = cleanupScanTask else { return }
+        task.cancel()
+        scanGeneration += 1
+        retiredScanTask = task
         cleanupScanTask = nil
         cleanupScanProgress = nil
+        lastScanWasCancelled = true
     }
 
     func requestCleanupReview() {
@@ -287,60 +313,63 @@ final class AppViewModel {
     }
 
     func startDownloadsAnalysis() {
-        beginAnalysis(.downloads) { [weak self] context in
-            guard let self else { return }
-            let result = try await DownloadsAnalyzer().scan(
-                context: context,
-                progress: analysisProgressHandler()
-            )
-            downloadsAnalysis = result
-            selectedDownloadFileIDs = result.defaultSelectedFileIDs
+        beginAnalysis(.downloads) { [weak self] context, progress in
+            let result = try await DownloadsAnalyzer().scan(context: context, progress: progress)
+            return {
+                self?.downloadsAnalysis = result
+                self?.selectedDownloadFileIDs = result.defaultSelectedFileIDs
+            }
         }
     }
 
     func startLargeFileAnalysis() {
         let threshold = largeFileThreshold
-        beginAnalysis(.largeFiles) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.largeFiles) { [weak self] context, progress in
             let result = try await LargeFileAnalyzer().scan(
                 threshold: threshold,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            largeFiles = result.files
-            selectedLargeFileID = nil
+            return {
+                self?.largeFiles = result.files
+                self?.selectedLargeFileID = nil
+            }
         }
     }
 
     func startFolderAnalysis() {
-        beginAnalysis(.folders) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.folders) { [weak self] context, progress in
             let result = try await LargeFolderAnalyzer().scan(
                 minimumRetainedFolderSize: 5 * 1_024 * 1_024,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            largeFolderRoot = result.root
+            return { self?.largeFolderRoot = result.root }
         }
     }
 
     func startDuplicateAnalysis() {
-        beginAnalysis(.duplicates) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.duplicates) { [weak self] context, progress in
             let result = try await DuplicateAnalyzer().scan(
                 minimumFileSize: 1 * 1_024 * 1_024,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            duplicateGroups = result.groups
-            selectedDuplicateFileIDs = result.groups.reduce(into: Set<UUID>()) { selection, group in
-                selection.formUnion(DuplicateSelection.defaultSelectedFileIDs(in: group))
+            return {
+                self?.duplicateGroups = result.groups
+                self?.selectedDuplicateFileIDs = result.groups.reduce(into: Set<UUID>()) { selection, group in
+                    selection.formUnion(DuplicateSelection.defaultSelectedFileIDs(in: group))
+                }
             }
         }
     }
 
     func cancelAnalysis() {
-        analysisTask?.cancel()
+        analysisGeneration += 1
+        if let task = analysisTask {
+            task.cancel()
+            retiredAnalysisTask = task
+        }
         analysisTask = nil
         analysisActivity = nil
         analysisProgress = nil
@@ -374,11 +403,13 @@ final class AppViewModel {
 
     /// Waits for the current cleanup scan to finish. Used by tests.
     func waitForScan() async {
+        await retiredScanTask?.value
         await cleanupScanTask?.value
     }
 
-    /// Waits for the current analysis to finish. Used by tests.
+    /// Waits for the current analysis, and any cancelled one, to finish. Used by tests.
     func waitForAnalysis() async {
+        await retiredAnalysisTask?.value
         await analysisTask?.value
     }
 
@@ -387,11 +418,16 @@ final class AppViewModel {
         await cleanupTask?.value
     }
 
-    private func beginAnalysis(
+    /// Runs one analysis at a time. `operation` returns a closure that publishes its results;
+    /// it only runs if this analysis is still the current one, so a cancelled or replaced
+    /// analysis never overwrites newer results.
+    func beginAnalysis(
         _ activity: AnalysisActivity,
-        operation: @escaping @MainActor (ScanContext) async throws -> Void
+        operation: @escaping @MainActor (ScanContext, @escaping ScanProgressHandler) async throws
+            -> (@MainActor () -> Void)
     ) {
         cancelAnalysis()
+        let generation = analysisGeneration
         analysisActivity = activity
         analysisProgress = ScanProgress(
             phase: .preparing,
@@ -403,25 +439,31 @@ final class AppViewModel {
             totalProviders: 0
         )
 
+        let progress = analysisProgressHandler(generation: generation)
         analysisTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await operation(makeScanContext())
+                let publish = try await operation(makeScanContext(), progress)
+                guard generation == analysisGeneration else { return }
+                publish()
             } catch is CancellationError {
                 // Cancellation is an expected user action.
             } catch {
+                guard generation == analysisGeneration else { return }
                 errorMessage = error.localizedDescription
             }
+            guard generation == analysisGeneration else { return }
             analysisTask = nil
             analysisActivity = nil
             analysisProgress = nil
         }
     }
 
-    private func analysisProgressHandler() -> ScanProgressHandler {
+    private func analysisProgressHandler(generation: Int) -> ScanProgressHandler {
         { [weak self] update in
             await MainActor.run {
-                self?.analysisProgress = update
+                guard let self, generation == self.analysisGeneration else { return }
+                self.analysisProgress = update
             }
         }
     }
@@ -448,12 +490,13 @@ final class AppViewModel {
 
     private func applyCleanupProgress(
         _ update: ScanProgress,
+        generation: Int,
         priorFiles: Int,
         priorBytes: Int64,
         completedProviders: Int,
         totalProviders: Int
     ) {
-        guard cleanupScanTask != nil else { return }
+        guard generation == scanGeneration, cleanupScanTask != nil else { return }
         cleanupScanProgress = ScanProgress(
             phase: update.phase,
             location: update.location,

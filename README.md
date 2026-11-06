@@ -59,7 +59,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 
 The native SwiftUI application coordinator connects sidebar navigation, real scan progress, cancellation, incremental results, cleanup selection, review, execution, completion, history, settings, Finder reveal, and Quick Look. Dedicated screens cover storage overview, Smart Cleanup, application and developer caches, Downloads, Trash, large files, large folders, duplicates, disk usage, cleanup history, and settings.
 
-The interface uses standard macOS navigation, materials, menus, shortcuts, light/dark appearance, selection controls, and accessibility labels. A cancelled cleanup scan retains completed categories and labels them as partial results rather than presenting them as a complete scan.
+The interface uses standard macOS navigation, materials, menus, shortcuts, light/dark appearance, selection controls, and accessibility labels. A cancelled cleanup scan retains completed categories and labels them as partial results rather than presenting them as a complete scan. **Cancel Scan** is available only while a scan runs, and starting a new scan right after cancelling waits for the cancelled one to stop, so the two never mix results.
 
 ## Screenshots
 

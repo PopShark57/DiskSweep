@@ -48,6 +48,95 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNotNil(model.lastScanDate)
     }
 
+    // MARK: - Scan and analysis lifecycle (D2, D8)
+
+    func testCancelThenRescanKeepsNewScanStateUntilItFinishes() async {
+        let events = FakeProviderEvents()
+        let model = makeModel(providers: [
+            FakeCleanupProvider(
+                id: "slow",
+                location: .userCaches,
+                items: [.init(name: "a.cache", size: 10)],
+                delay: .milliseconds(300),
+                ignoresCancellation: true,
+                events: events
+            ),
+            FakeCleanupProvider(
+                id: "fast",
+                location: .userLogs,
+                items: [.init(name: "old.log", size: 5)],
+                events: events
+            )
+        ])
+
+        model.startCleanupScan()
+        await events.wait(for: "start:slow")
+        model.cancelCleanupScan()
+        XCTAssertFalse(model.isCleanupScanning)
+        XCTAssertTrue(model.lastScanWasCancelled)
+
+        model.startCleanupScan()
+        XCTAssertTrue(model.isCleanupScanning)
+        XCTAssertNotNil(model.cleanupScanProgress)
+
+        // The cancelled scan's provider finishes now. Its task must not clear the new scan.
+        await events.wait(for: "finish:slow")
+        await Task.yield()
+        XCTAssertTrue(model.isCleanupScanning, "The old task cleared the new scan's handle")
+        XCTAssertNotNil(model.cleanupScanProgress, "The old task cleared the new scan's progress")
+
+        await model.waitForScan()
+        XCTAssertFalse(model.isCleanupScanning)
+        XCTAssertNil(model.cleanupScanProgress)
+        XCTAssertEqual(model.categories.map(\.location), [.userCaches, .userLogs])
+        XCTAssertEqual(Set(model.categories.map(\.location)).count, model.categories.count)
+        XCTAssertFalse(model.lastScanWasCancelled)
+        let startCount = await events.log.filter { $0 == "start:slow" }.count
+        XCTAssertEqual(startCount, 2)
+    }
+
+    func testCancelWhileIdleDoesNotMarkCompletedScanPartial() async {
+        let model = makeModel(providers: [
+            FakeCleanupProvider(id: "a", location: .userCaches, items: [.init(name: "a", size: 1)])
+        ])
+        model.startCleanupScan()
+        await model.waitForScan()
+        XCTAssertFalse(model.lastScanWasCancelled)
+
+        model.cancelCleanupScan()
+        XCTAssertFalse(model.lastScanWasCancelled)
+        XCTAssertEqual(model.categories.count, 1)
+    }
+
+    func testReplacedAnalysisNeverPublishesOrClearsTheNewOne() async {
+        let model = makeModel(providers: [])
+        let events = FakeProviderEvents()
+        let gate = TestGate()
+        var published: [String] = []
+
+        model.beginAnalysis(.downloads) { _, _ in
+            // Ignores cancellation, like an analyzer stuck in one filesystem call.
+            await Task.detached { try? await Task.sleep(for: .milliseconds(200)) }.value
+            await events.finished("A")
+            return { published.append("A") }
+        }
+        model.beginAnalysis(.largeFiles) { _, _ in
+            await gate.wait()
+            return { published.append("B") }
+        }
+
+        await events.wait(for: "finish:A")
+        await Task.yield()
+        XCTAssertEqual(model.analysisActivity, .largeFiles)
+        XCTAssertNotNil(model.analysisProgress)
+
+        await gate.open()
+        await model.waitForAnalysis()
+        XCTAssertEqual(published, ["B"])
+        XCTAssertNil(model.analysisActivity)
+        XCTAssertNil(model.analysisProgress)
+    }
+
     // MARK: - Helpers
 
     func makeModel(

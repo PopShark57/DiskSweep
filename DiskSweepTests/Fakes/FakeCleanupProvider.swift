@@ -105,3 +105,20 @@ actor FakeProviderEvents {
         ready.forEach { $0.1.resume() }
     }
 }
+
+/// A one-shot gate a test opens to let an operation continue.
+actor TestGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters.removeAll()
+    }
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+}

@@ -2,6 +2,7 @@ import SwiftUI
 
 @MainActor
 struct DiskSweepCommandActions {
+    let isScanning: Bool
     let scan: () -> Void
     let cancelScan: () -> Void
     let focusSearch: () -> Void
@@ -27,15 +28,13 @@ struct DiskSweepCommands: Commands {
         CommandMenu("DiskSweep") {
             Button("Scan") { actions?.scan() }
                 .keyboardShortcut("r", modifiers: .command)
-                .disabled(actions == nil)
+                .disabled(actions == nil || actions?.isScanning == true)
 
-            Button("Rescan") { actions?.scan() }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(actions == nil)
-
+            // Enabled only while a scan runs, so the key never relabels a finished scan as
+            // partial or takes the key away from a focused text field.
             Button("Cancel Scan") { actions?.cancelScan() }
                 .keyboardShortcut(.cancelAction)
-                .disabled(actions == nil)
+                .disabled(actions?.isScanning != true)
 
             Divider()
             Button("Find") { actions?.focusSearch() }

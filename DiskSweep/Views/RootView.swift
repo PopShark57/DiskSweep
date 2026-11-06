@@ -17,6 +17,7 @@ struct RootView: View {
         .focusedSceneValue(
             \.diskSweepCommandActions,
             DiskSweepCommandActions(
+                isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
                 cancelScan: model.cancelCleanupScan,
                 focusSearch: {
