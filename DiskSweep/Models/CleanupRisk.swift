@@ -5,7 +5,10 @@ enum CleanupRisk: String, CaseIterable, Codable, Hashable, Sendable {
     case reviewRecommended
     case userFiles
 
-    var title: String {
+    /// The localized risk title.
+    var title: String { String(localized: titleResource) }
+
+    var titleResource: LocalizedStringResource {
         switch self {
         case .safe: "Safe"
         case .reviewRecommended: "Review Recommended"
@@ -13,7 +16,10 @@ enum CleanupRisk: String, CaseIterable, Codable, Hashable, Sendable {
         }
     }
 
-    var explanation: String {
+    /// The localized risk explanation.
+    var explanation: String { String(localized: explanationResource) }
+
+    var explanationResource: LocalizedStringResource {
         switch self {
         case .safe:
             "Regeneratable data in a recognized cleanup location."

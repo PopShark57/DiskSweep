@@ -21,7 +21,10 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
 
     var id: String { rawValue }
 
-    var title: String {
+    /// The localized sidebar title.
+    var title: String { String(localized: titleResource) }
+
+    var titleResource: LocalizedStringResource {
         switch self {
         case .overview: "Overview"
         case .smartCleanup: "Smart Cleanup"

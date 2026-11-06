@@ -61,6 +61,7 @@
 		8F9F83C74E2E953E32A116C8 /* DiskStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA005134DA143EBD881871E6 /* DiskStatistics.swift */; };
 		9008F442AA78BE767F01EAB4 /* CleanupSnapshotRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06818EBC179866DAC6029E94 /* CleanupSnapshotRegistry.swift */; };
 		91D337DF2928E3FFF38B718C /* SafetyScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD07BDD95C44F442B8416540 /* SafetyScannerTests.swift */; };
+		9404713BAB8A1AFF2606312B /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5FA72F47A09A839D3C3EE1A7 /* Localizable.xcstrings */; };
 		9590DAE12E8F72C9A77B8AE1 /* TrashProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0B5A9FCF2FA066124275C5 /* TrashProvider.swift */; };
 		99DAC3F1DE42B0E612FEF4A5 /* CleanupLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE25E87A2682739050970954 /* CleanupLocation.swift */; };
 		A099ED2720866FB9677054A3 /* DiskSweepCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74A0A4ED0BDF4BDC9AC011EA /* DiskSweepCommands.swift */; };
@@ -152,6 +153,7 @@
 		573B722D5DE8A5FA7CDE20E0 /* ScanProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressView.swift; sourceTree = "<group>"; };
 		5C8EFB0A0DC8F7FA3B389A5D /* XcodeCleanupProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeCleanupProviders.swift; sourceTree = "<group>"; };
 		5CBA446A10D2FDA1432341B2 /* TemporaryFilesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryFilesProvider.swift; sourceTree = "<group>"; };
+		5FA72F47A09A839D3C3EE1A7 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		6097F9066D5D2FA90F013FB2 /* StandardCleanupProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardCleanupProviders.swift; sourceTree = "<group>"; };
 		611F715D94B12723434AC0AC /* SwiftPackageCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPackageCacheProvider.swift; sourceTree = "<group>"; };
 		615889E1FD22E0F4D0CB5E44 /* StaleIDEVersionsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleIDEVersionsProvider.swift; sourceTree = "<group>"; };
@@ -327,6 +329,7 @@
 			isa = PBXGroup;
 			children = (
 				6226F09DC617A3763DE5E4CE /* Assets.xcassets */,
+				5FA72F47A09A839D3C3EE1A7 /* Localizable.xcstrings */,
 				78FAF9FBB4CC7157ACDC2D64 /* App */,
 				CF040B036463922BCBB76BCC /* Models */,
 				3B98DA806C5665DD2DB29C1F /* Services */,
@@ -533,6 +536,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8C2068F5698500567D5784FD /* Assets.xcassets in Resources */,
+				9404713BAB8A1AFF2606312B /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -787,6 +791,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -795,6 +800,7 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
 			};
@@ -850,6 +856,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -857,6 +864,7 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
 			};

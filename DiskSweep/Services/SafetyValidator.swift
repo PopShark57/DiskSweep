@@ -22,37 +22,37 @@ enum SafetyValidationError: Error, LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .nonFileURL:
-            "Only local file URLs can be cleaned."
+            String(localized: "Only local file URLs can be cleaned.")
         case let .traversalComponent(path):
-            "The path contains a traversal component: \(path)"
+            String(localized: "The path contains a traversal component: \(path)")
         case .noApprovedRoots:
-            "No approved cleanup roots were supplied."
+            String(localized: "No approved cleanup roots were supplied.")
         case let .invalidApprovedRoot(path):
-            "The cleanup root is not an approved user-scoped directory: \(path)"
+            String(localized: "The cleanup root is not an approved user-scoped directory: \(path)")
         case let .targetDoesNotExist(path):
-            "The cleanup target no longer exists: \(path)"
+            String(localized: "The cleanup target no longer exists: \(path)")
         case let .cannotInspect(path):
-            "The cleanup target could not be inspected safely: \(path)"
+            String(localized: "The cleanup target could not be inspected safely: \(path)")
         case let .targetIsApprovedRoot(path):
-            "DiskSweep never removes an approved cleanup root itself: \(path)"
+            String(localized: "DiskSweep never removes an approved cleanup root itself: \(path)")
         case let .outsideApprovedRoots(path):
-            "The target is outside this provider's approved cleanup roots: \(path)"
+            String(localized: "The target is outside this provider's approved cleanup roots: \(path)")
         case let .protectedLocation(path):
-            "The target is in a protected location: \(path)"
+            String(localized: "The target is in a protected location: \(path)")
         case let .symbolicLink(path):
-            "Direct symbolic-link cleanup targets are refused: \(path)"
+            String(localized: "Direct symbolic-link cleanup targets are refused: \(path)")
         case let .unsupportedFileType(path):
-            "Only regular files and directories can be cleaned: \(path)"
+            String(localized: "Only regular files and directories can be cleaned: \(path)")
         case let .excludedContent(path):
-            "The directory contains content excluded from cleanup: \(path)"
+            String(localized: "The directory contains content excluded from cleanup: \(path)")
         case let .volumeBoundary(path):
-            "The target crosses a filesystem boundary: \(path)"
+            String(localized: "The target crosses a filesystem boundary: \(path)")
         case let .targetChanged(path):
-            "The target changed after validation and was not removed: \(path)"
+            String(localized: "The target changed after validation and was not removed: \(path)")
         case let .unrecognizedProjectArtifact(path):
-            "The folder no longer has the marker that identifies it as a rebuildable project artifact: \(path)"
+            String(localized: "The folder no longer has the marker that identifies it as a rebuildable project artifact: \(path)")
         case let .noLongerQualifies(path):
-            "The item no longer qualifies for cleanup. It may be in use again, or the newer version that replaced it is gone: \(path)"
+            String(localized: "The item no longer qualifies for cleanup. It may be in use again, or the newer version that replaced it is gone: \(path)")
         }
     }
 }

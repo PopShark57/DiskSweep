@@ -22,7 +22,10 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
 
     var id: String { rawValue }
 
-    var name: String {
+    /// The localized display name.
+    var name: String { String(localized: nameResource) }
+
+    var nameResource: LocalizedStringResource {
         switch self {
         case .userCaches: "User Caches"
         case .userLogs: "User Logs"
@@ -45,7 +48,10 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         }
     }
 
-    var explanation: String {
+    /// The localized one-sentence explanation.
+    var explanation: String { String(localized: explanationResource) }
+
+    var explanationResource: LocalizedStringResource {
         switch self {
         case .userCaches:
             "Disposable cache folders created by apps in your user Library."
