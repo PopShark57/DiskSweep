@@ -364,6 +364,17 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(calls, [[visible.id]])
     }
 
+    // MARK: - Quick Look (C3)
+
+    func testQuickLookIsDrivenByTheViewModel() {
+        let model = makeModel(providers: [])
+        XCTAssertNil(model.quickLookURL)
+        model.quickLook(URL(fileURLWithPath: "/tmp/a/../b.txt"))
+        XCTAssertEqual(model.quickLookURL, URL(fileURLWithPath: "/tmp/b.txt"))
+        model.quickLook(URL(string: "https://example.com/file")!)
+        XCTAssertEqual(model.quickLookURL, URL(fileURLWithPath: "/tmp/b.txt"), "Only file URLs are previewed")
+    }
+
     // MARK: - Helpers
 
     func makeModel(

@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 extension Notification.Name {
@@ -64,6 +65,7 @@ struct RootView: View {
         } message: {
             Text(model.errorMessage ?? "An unexpected error occurred.")
         }
+        .quickLookPreview($model.quickLookURL)
         .task { await model.startup() }
     }
 

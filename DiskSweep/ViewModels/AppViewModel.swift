@@ -41,6 +41,8 @@ final class AppViewModel {
     var analysisProgress: ScanProgress?
 
     var errorMessage: String?
+    /// The file Quick Look shows; `nil` closes the panel.
+    var quickLookURL: URL?
 
     let settings: SettingsStore
     let history: CleanupHistoryStore
@@ -432,7 +434,8 @@ final class AppViewModel {
     }
 
     func quickLook(_ url: URL) {
-        _ = finderService.quickLook(url)
+        guard url.isFileURL else { return }
+        quickLookURL = url.standardizedFileURL
     }
 
     func quickLookSelectedFile() {
