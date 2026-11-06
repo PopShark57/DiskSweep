@@ -333,6 +333,85 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
         XCTAssertTrue(exists(".npm/_logs/debug.log"))
     }
 
+    // MARK: - Poetry (D9)
+
+    func testPoetryOffersOnlyCachesAndArtifactsNeverVirtualenvs() async throws {
+        try write("Library/Caches/pypoetry/cache/repositories/pypi/_http/a", byteCount: 32)
+        try write("Library/Caches/pypoetry/artifacts/ab/cd/pkg.whl", byteCount: 32)
+        try write("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py", byteCount: 64)
+        try write("Library/Caches/com.example.App/blob")
+
+        let userCaches = UserCacheProvider(homeDirectory: home)
+        let userItems = await userCaches.scan(context: context) { _ in }.items
+        XCTAssertFalse(userItems.contains { $0.url.path.contains("pypoetry") })
+        XCTAssertTrue(userItems.contains { $0.url.lastPathComponent == "com.example.App" })
+
+        let toolCaches = DeveloperToolCacheProvider(homeDirectory: home)
+        let toolItems = await toolCaches.scan(context: context) { _ in }.items
+        XCTAssertEqual(
+            Set(toolItems.map { $0.url.deletingLastPathComponent().lastPathComponent }),
+            ["cache", "artifacts"]
+        )
+        XCTAssertFalse(toolItems.contains { $0.url.path.contains("virtualenvs") })
+        XCTAssertTrue(toolItems.allSatisfy(\.isDeletable))
+    }
+
+    /// Negative: no authorization removes a Poetry virtual environment, even with a recorded
+    /// identity. Package Manager Caches doesn't cover it, and User Caches has no scan-time
+    /// snapshot for it because its scan never offers `pypoetry`.
+    func testEngineRefusesPoetryVirtualenvUnderEveryAuthorization() async throws {
+        try write("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py", byteCount: 64)
+        try write("Library/Caches/pypoetry/cache/repositories/pypi/_http/a")
+        try write("Library/Caches/pypoetry/artifacts/ab/pkg.whl")
+        let venv = home.appendingPathComponent("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12")
+        let providers: [any CleanupProvider] = [
+            UserCacheProvider(homeDirectory: home),
+            DeveloperToolCacheProvider(homeDirectory: home)
+        ]
+        // Scans first, as the app does, so each provider has recorded its own snapshots.
+        for provider in providers {
+            _ = await provider.scan(context: context) { _ in }
+        }
+
+        for provider in providers {
+            let forged = CleanupItem(
+                providerID: provider.id,
+                location: provider.location,
+                name: "proj-abc-py3.12",
+                url: venv,
+                size: 64,
+                kind: .directory,
+                risk: .safe,
+                explanation: "forged"
+            )
+            let result = await engine.clean([forged], providers: providers, disposition: .permanent)
+            XCTAssertTrue(result.cleanedItems.isEmpty, provider.id)
+            XCTAssertEqual(result.failures.count, 1, provider.id)
+        }
+
+        // Package Manager Caches must refuse it even when an identity is recorded.
+        let toolCaches = DeveloperToolCacheProvider(homeDirectory: home)
+        let withSnapshot = CleanupItem(
+            providerID: toolCaches.id,
+            location: toolCaches.location,
+            name: "proj-abc-py3.12",
+            url: venv,
+            size: 64,
+            kind: .directory,
+            risk: .safe,
+            explanation: "forged"
+        )
+        snapshots.record(
+            providerID: toolCaches.id,
+            itemID: withSnapshot.id,
+            identity: try SafetyValidator.captureIdentity(at: venv)
+        )
+        let result = await engine.clean([withSnapshot], providers: [toolCaches], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(result.failures.first?.reason.contains("outside this provider") == true)
+        XCTAssertTrue(exists("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py"))
+    }
+
     // MARK: - Electron app caches
 
     func testFindsElectronCachesButNotAppData() async throws {

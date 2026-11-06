@@ -2,7 +2,9 @@ import Foundation
 
 /// Download caches that package managers keep outside `~/Library/Caches`, usually in dotfolders.
 /// Caches inside `~/Library/Caches` (Yarn 1, pip on some setups, CocoaPods, Go) are already
-/// offered by the user cache provider, so they are not repeated here.
+/// offered by the user cache provider, so they are not repeated here. Poetry is the exception:
+/// its `~/Library/Caches/pypoetry` folder also holds virtual environments, so User Caches skips
+/// it and this provider offers only its `cache` and `artifacts` folders, never `virtualenvs`.
 struct DeveloperToolCacheProvider: CleanupProvider {
     static let providerID = "developer-tool-caches"
 
@@ -57,7 +59,10 @@ struct DeveloperToolCacheProvider: CleanupProvider {
         CacheDirectory(".cocoapods/repos", tool: "CocoaPods"),
         CacheDirectory(".composer/cache", tool: "Composer"),
         CacheDirectory(".cache/composer", tool: "Composer"),
-        CacheDirectory(".node-gyp", tool: "node-gyp")
+        CacheDirectory(".node-gyp", tool: "node-gyp"),
+        // Never add Library/Caches/pypoetry/virtualenvs: those are environments, not downloads.
+        CacheDirectory("Library/Caches/pypoetry/cache", tool: "Poetry"),
+        CacheDirectory("Library/Caches/pypoetry/artifacts", tool: "Poetry", label: "Poetry artifacts")
     ]
 
     let homeDirectory: URL

@@ -26,11 +26,17 @@ struct UserCacheProvider: CleanupProvider {
             roots: allowedRoots,
             context: context,
             progress: progress,
-            excludedChildNames: [
-                "com.apple.Safari", "Google", "Chromium", "Microsoft Edge",
-                "BraveSoftware", "Firefox", "Mozilla", "Homebrew",
-                "org.swift.swiftpm"
-            ]
+            excludedChildNames: Self.excludedChildNames
         )
     }
+
+    /// Children of `~/Library/Caches` that other providers handle, or that hold more than
+    /// downloads. Poetry keeps its virtual environments in `pypoetry/virtualenvs` by default,
+    /// so `pypoetry` is never offered as one item; Package Manager Caches offers only its
+    /// `cache` and `artifacts` folders.
+    static let excludedChildNames: Set<String> = [
+        "com.apple.Safari", "Google", "Chromium", "Microsoft Edge",
+        "BraveSoftware", "Firefox", "Mozilla", "Homebrew",
+        "org.swift.swiftpm", "pypoetry"
+    ]
 }
