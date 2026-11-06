@@ -146,8 +146,9 @@ struct LargeFilesView: View {
                 Table(visibleFiles, selection: $selectedFileID) {
                     TableColumn("Name") { file in
                         HStack(spacing: 8) {
-                            Image(systemName: "doc")
+                            Image(systemName: file.isPackage ? "shippingbox" : "doc")
                                 .foregroundStyle(.secondary)
+                                .help(file.isPackage ? "Bundle, sized as one item" : "")
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(file.name).lineLimit(1)
                                 Text(file.url.deletingLastPathComponent().path(percentEncoded: false))

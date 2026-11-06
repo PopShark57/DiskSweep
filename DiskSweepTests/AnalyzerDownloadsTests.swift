@@ -98,4 +98,31 @@ final class AnalyzerDownloadsTests: XCTestCase {
 
         XCTAssertEqual(result.allFiles.map(\.name), ["visible.zip"])
     }
+
+    // MARK: - Packages in Downloads (D3)
+
+    func testDownloadsShowsBundlesAsSingleItemsThatCantBeCleaned() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let downloads = try temporary.directory("Downloads")
+        try temporary.file("Downloads/Foo.app/Contents/MacOS/Foo", data: Data(repeating: 1, count: 4_096))
+        try temporary.file("Downloads/Thing.sparsebundle/bands/0", data: Data(repeating: 2, count: 4_096))
+        try temporary.file("Downloads/Installer.dmg", data: Data(repeating: 3, count: 1_024))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let analysis = try await DownloadsAnalyzer().scan(root: downloads, context: context)
+
+        XCTAssertEqual(Set(analysis.allFiles.map(\.name)), ["Foo.app", "Thing.sparsebundle", "Installer.dmg"])
+        let app = try XCTUnwrap(analysis.allFiles.first { $0.name == "Foo.app" })
+        let sparse = try XCTUnwrap(analysis.allFiles.first { $0.name == "Thing.sparsebundle" })
+        XCTAssertTrue(app.isPackage)
+        XCTAssertEqual(DownloadsCategory.classify(app), .other)
+        XCTAssertEqual(DownloadsCategory.classify(sparse), .diskImages)
+
+        // Q5: bundles are shown but never bridged to cleanup.
+        let provider = DownloadsProvider(homeDirectory: temporary.url)
+        XCTAssertNil(provider.cleanupItem(for: app, registry: snapshots))
+        XCTAssertNil(provider.cleanupItem(for: sparse, registry: snapshots))
+        let dmg = try XCTUnwrap(analysis.allFiles.first { $0.name == "Installer.dmg" })
+        XCTAssertNotNil(provider.cleanupItem(for: dmg, registry: snapshots))
+    }
 }

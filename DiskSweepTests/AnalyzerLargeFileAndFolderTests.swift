@@ -126,4 +126,67 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
             LargeFileAnalyzer.thresholdPresets.contains { $0.bytes == LargeFileAnalyzer.defaultThreshold }
         )
     }
+
+    // MARK: - Packages as opaque items (D3)
+
+    func testPackageCountsTowardFolderTotalAsOneLeaf() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Media/Show.fcpbundle/Original Media/clip.mov", data: Data(repeating: 7, count: 5_000_000))
+        try temporary.file("Media/loose.bin", data: Data(repeating: 1, count: 10_000))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await LargeFolderAnalyzer().scan(root: temporary.url, context: context)
+
+        XCTAssertGreaterThanOrEqual(result.root.size, 5_000_000)
+        let media = try XCTUnwrap(result.root.children.first { $0.name == "Media" })
+        XCTAssertGreaterThanOrEqual(media.size, 5_010_000)
+        let bundle = try XCTUnwrap(media.children.first { $0.name == "Show.fcpbundle" })
+        XCTAssertTrue(bundle.isPackage)
+        XCTAssertTrue(bundle.children.isEmpty, "A package is a leaf")
+        XCTAssertGreaterThanOrEqual(bundle.size, 5_000_000)
+    }
+
+    func testLargeFilesListsPackageAsOneItemNotItsContents() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Apps/Tool.app/Contents/Resources/big.dat", data: Data(repeating: 3, count: 2_000_000))
+        try temporary.file("Pictures.photoslibrary/original.jpg", data: Data(repeating: 6, count: 2_000_000))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await LargeFileAnalyzer().scan(
+            root: temporary.url,
+            threshold: 1_000_000,
+            context: context
+        )
+
+        XCTAssertEqual(result.files.map(\.name), ["Tool.app"])
+        let item = try XCTUnwrap(result.files.first)
+        XCTAssertTrue(item.isPackage)
+        XCTAssertEqual(item.kind, .directory)
+        XCTAssertGreaterThanOrEqual(item.size, 2_000_000)
+    }
+
+    func testPackagesAreListedFileByFileWhenTheSettingIsOff() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Apps/Tool.app/Contents/Resources/big.dat", data: Data(repeating: 3, count: 2_000_000))
+        let context = ScanContext(
+            homeDirectory: temporary.url,
+            showHiddenFiles: true,
+            excludePackageContents: false,
+            snapshots: snapshots
+        )
+
+        let result = try await LargeFileAnalyzer().scan(root: temporary.url, threshold: 1_000_000, context: context)
+        XCTAssertEqual(result.files.map(\.name), ["big.dat"])
+    }
+
+    func testDuplicatesStillSkipPackages() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 9, count: 8_192)
+        try temporary.file("A/Tool.app/Contents/Resources/x.dat", data: data)
+        try temporary.file("B/Tool.app/Contents/Resources/x.dat", data: data)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+        XCTAssertTrue(result.groups.isEmpty)
+    }
 }

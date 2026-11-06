@@ -180,8 +180,8 @@ struct SettingsView: View {
                 )
                 Divider()
                 settingsToggle(
-                    "Package contents",
-                    detail: "Skip application and document bundle internals where unnecessary.",
+                    "Treat bundles as single items",
+                    detail: "Show apps, virtual machines, media libraries, and other bundles as one item with their total size, instead of listing the files inside them.",
                     isOn: $settings.exclusions.excludePackageContents
                 )
             }

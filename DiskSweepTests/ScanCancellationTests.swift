@@ -92,4 +92,35 @@ final class ScanCancellationTests: XCTestCase {
             XCTFail("Expected CancellationError, got \(error)")
         }
     }
+
+    /// D3: cancelling while a large package is being sized stops the scan.
+    func testCancellationDuringPackageSizingPropagates() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        for index in 0..<3_000 {
+            try temporary.file("Big.app/Contents/Resources/\(index).dat", data: Data([1]))
+        }
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+        let root = temporary.url
+        let task = Task {
+            try await AnalyzerFileSystem.packageSize(root.appendingPathComponent("Big.app"))
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("A cancelled package sizing must not return a result")
+        } catch is CancellationError {
+            // Expected.
+        }
+
+        let folderTask = Task {
+            try await LargeFolderAnalyzer().scan(root: root, context: context)
+        }
+        folderTask.cancel()
+        do {
+            _ = try await folderTask.value
+            XCTFail("A cancelled folder scan must not return a result")
+        } catch is CancellationError {
+            // Expected.
+        }
+    }
 }

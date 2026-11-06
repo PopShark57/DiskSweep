@@ -8,6 +8,14 @@ enum AnalyzerTraversalPurpose: Sendable {
     case duplicates
 }
 
+/// What an analyzer does with one entry.
+enum TraversalDecision: Sendable {
+    case include
+    case exclude
+    /// A package: counted with its total size as one item, without listing its contents.
+    case opaque
+}
+
 struct AnalyzerEnumerationResult: Sendable {
     let files: [FileItem]
     let issues: [ScanIssue]
@@ -131,17 +139,35 @@ enum AnalyzerFileSystem {
                         continue
                     }
 
-                    if shouldExclude(
+                    let decision = traversalDecision(
                         child,
                         metadata: childMetadata,
                         context: context,
                         purpose: purpose,
                         isRoot: false
-                    ) {
+                    )
+                    if decision == .exclude || childMetadata.isSymbolicLink {
                         continue
                     }
 
-                    if childMetadata.isSymbolicLink {
+                    if decision == .opaque, childMetadata.isDirectory {
+                        let package = try await packageSize(child)
+                        issues.append(contentsOf: package.issues)
+                        filesAnalyzed += package.fileCount
+                        bytesAnalyzed = addingClamped(bytesAnalyzed, package.bytes)
+                        if purpose != .duplicates, package.bytes >= minimumSize {
+                            files.append(FileItem(
+                                url: childMetadata.url,
+                                size: package.bytes,
+                                kind: .directory,
+                                createdAt: childMetadata.createdAt,
+                                modifiedAt: childMetadata.modifiedAt,
+                                accessedAt: childMetadata.accessedAt,
+                                contentTypeIdentifier: childMetadata.contentTypeIdentifier,
+                                isHidden: childMetadata.isHidden,
+                                isPackage: true
+                            ))
+                        }
                         continue
                     }
 
@@ -198,6 +224,21 @@ enum AnalyzerFileSystem {
         )
     }
 
+    /// The total allocated size of a package's contents. Cancellation is checked for every
+    /// entry, so a huge bundle doesn't make a scan uninterruptible.
+    static func packageSize(
+        _ url: URL
+    ) async throws -> (bytes: Int64, fileCount: Int, issues: [ScanIssue]) {
+        let result = try await DirectorySizer().size(
+            of: url,
+            includeHiddenFiles: true,
+            skipPackages: false,
+            excludedNames: [],
+            batchSize: 256
+        )
+        return (result.byteCount, result.fileCount, result.issues)
+    }
+
     static func metadata(
         for url: URL,
         issueSink: inout [ScanIssue]
@@ -218,49 +259,66 @@ enum AnalyzerFileSystem {
         purpose: AnalyzerTraversalPurpose,
         isRoot: Bool
     ) -> Bool {
+        traversalDecision(
+            url,
+            metadata: metadata,
+            context: context,
+            purpose: purpose,
+            isRoot: isRoot
+        ) == .exclude
+    }
+
+    /// Photo libraries and Time Machine data are excluded first. Then, when "Treat bundles as
+    /// single items" is on, a package is opaque: sized as one item rather than listed file by
+    /// file. Duplicates still skip packages entirely. A scan root is never opaque.
+    static func traversalDecision(
+        _ url: URL,
+        metadata: AnalyzerFileMetadata,
+        context: ScanContext,
+        purpose: AnalyzerTraversalPurpose,
+        isRoot: Bool
+    ) -> TraversalDecision {
         let standardizedURL = url.standardizedFileURL
 
         if context.exclusions.contains(where: { standardizedURL.isSameOrDescendant(of: $0) }) {
-            return true
+            return .exclude
         }
 
         if context.excludeCloudPlaceholders, metadata.isCloudPlaceholder {
-            return true
+            return .exclude
         }
 
         if !context.showHiddenFiles, metadata.isHidden, !isRoot {
-            return true
+            return .exclude
         }
 
-        guard metadata.isDirectory else { return false }
+        guard metadata.isDirectory else { return .include }
 
         let lowercaseName = standardizedURL.lastPathComponent.lowercased()
         if context.excludedDirectoryNames.contains(lowercaseName) {
-            return true
+            return .exclude
         }
 
         if purpose == .duplicates,
            context.excludeNodeModulesFromDeepScans,
            lowercaseName == "node_modules" {
-            return true
+            return .exclude
         }
 
         if context.excludePhotoLibraries,
            photoLibraryExtensions.contains(standardizedURL.pathExtension.lowercased()) {
-            return true
+            return .exclude
         }
 
         if context.excludeTimeMachineBackups, isTimeMachinePath(standardizedURL) {
-            return true
+            return .exclude
         }
 
-        // Directory packages are intentionally treated as opaque. Reading their
-        // internals is unnecessary for these discovery tools and can be expensive.
-        if context.excludePackageContents, metadata.isPackage {
-            return true
+        if context.excludePackageContents, metadata.isPackage, !isRoot {
+            return purpose == .duplicates ? .exclude : .opaque
         }
 
-        return false
+        return .include
     }
 
     static func progressValue(

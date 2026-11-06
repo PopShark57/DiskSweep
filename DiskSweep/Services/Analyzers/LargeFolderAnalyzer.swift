@@ -161,13 +161,36 @@ struct LargeFolderAnalyzer: Sendable {
                 continue
             }
 
-            if AnalyzerFileSystem.shouldExclude(
+            let decision = AnalyzerFileSystem.traversalDecision(
                 child,
                 metadata: childMetadata,
                 context: context,
                 purpose: .largeFolders,
                 isRoot: false
-            ) || childMetadata.isSymbolicLink {
+            )
+            if decision == .exclude || childMetadata.isSymbolicLink {
+                continue
+            }
+
+            // A package counts toward its folder's total and appears as one leaf.
+            if decision == .opaque, childMetadata.isDirectory {
+                let package = try await AnalyzerFileSystem.packageSize(child)
+                state.issues.append(contentsOf: package.issues)
+                size = AnalyzerFileSystem.addingClamped(size, package.bytes)
+                fileCount += package.fileCount
+                state.filesAnalyzed += package.fileCount
+                state.bytesAnalyzed = AnalyzerFileSystem.addingClamped(
+                    state.bytesAnalyzed,
+                    package.bytes
+                )
+                if package.bytes >= minimumRetainedFolderSize {
+                    directoryChildren.append(DirectoryNode(
+                        url: childMetadata.url,
+                        size: package.bytes,
+                        fileCount: package.fileCount,
+                        isPackage: true
+                    ))
+                }
                 continue
             }
 

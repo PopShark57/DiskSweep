@@ -263,6 +263,7 @@ struct DownloadsView: View {
         .listStyle(.inset)
         .onKeyPress(.space) {
             let checkable = highlighted.intersection(visibleFileIDs)
+                .filter { filesByID[$0]?.isPackage == false }
             guard !checkable.isEmpty else { return .ignored }
             selectedFileIDs = CheckboxToggle.toggled(
                 selectedFileIDs,
@@ -312,26 +313,38 @@ struct DownloadsView: View {
 
     private func fileRow(_ file: FileItem) -> some View {
         HStack(spacing: 12) {
-            Toggle(
-                isOn: Binding(
-                    get: { selectedFileIDs.contains(file.id) },
-                    set: { value in
-                        if value { selectedFileIDs.insert(file.id) }
-                        else { selectedFileIDs.remove(file.id) }
-                    }
-                )
-            ) { EmptyView() }
-            .toggleStyle(.checkbox)
-            .labelsHidden()
-            .accessibilityLabel("\(file.name), \(FileSizeFormatter.string(fromByteCount: file.size))")
+            if file.isPackage {
+                // Bundles are shown with their size but can't be cleaned from here yet.
+                Image(systemName: "eye.circle")
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16)
+                    .help("Reveal only: bundles can't be cleaned from DiskSweep")
+                    .accessibilityLabel("\(file.name), \(FileSizeFormatter.string(fromByteCount: file.size)), reveal only")
+            } else {
+                Toggle(
+                    isOn: Binding(
+                        get: { selectedFileIDs.contains(file.id) },
+                        set: { value in
+                            if value { selectedFileIDs.insert(file.id) }
+                            else { selectedFileIDs.remove(file.id) }
+                        }
+                    )
+                ) { EmptyView() }
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("\(file.name), \(FileSizeFormatter.string(fromByteCount: file.size))")
+            }
 
-            Image(systemName: "doc")
+            Image(systemName: file.isPackage ? "shippingbox" : "doc")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.name).lineLimit(1)
                 HStack(spacing: 8) {
                     Text(file.fileExtension.uppercased())
+                    if file.isPackage {
+                        Text("Bundle · Reveal only")
+                    }
                     if let modifiedAt = file.modifiedAt {
                         Text(modifiedAt, format: .dateTime.year().month().day())
                     }

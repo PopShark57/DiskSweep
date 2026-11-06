@@ -11,6 +11,9 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
     let accessedAt: Date?
     let contentTypeIdentifier: String?
     let isHidden: Bool
+    /// A bundle such as an app, a virtual machine, or a sparse bundle, sized as one item.
+    /// Packages are shown but never offered for cleanup.
+    let isPackage: Bool
 
     init(
         id: UUID = UUID(),
@@ -22,7 +25,8 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
         modifiedAt: Date? = nil,
         accessedAt: Date? = nil,
         contentTypeIdentifier: String? = nil,
-        isHidden: Bool = false
+        isHidden: Bool = false,
+        isPackage: Bool = false
     ) {
         self.id = id
         self.url = url
@@ -34,6 +38,7 @@ struct FileItem: Identifiable, Codable, Hashable, Sendable {
         self.accessedAt = accessedAt
         self.contentTypeIdentifier = contentTypeIdentifier
         self.isHidden = isHidden
+        self.isPackage = isPackage
     }
 
     var fileExtension: String {
@@ -49,6 +54,8 @@ struct DirectoryNode: Identifiable, Codable, Hashable, Sendable {
     let size: Int64
     let fileCount: Int
     var children: [DirectoryNode]
+    /// A bundle sized as one leaf, such as an app or a virtual machine.
+    let isPackage: Bool
 
     init(
         id: UUID = UUID(),
@@ -56,7 +63,8 @@ struct DirectoryNode: Identifiable, Codable, Hashable, Sendable {
         name: String? = nil,
         size: Int64,
         fileCount: Int,
-        children: [DirectoryNode] = []
+        children: [DirectoryNode] = [],
+        isPackage: Bool = false
     ) {
         self.id = id
         self.url = url
@@ -64,6 +72,7 @@ struct DirectoryNode: Identifiable, Codable, Hashable, Sendable {
         self.size = max(0, size)
         self.fileCount = max(0, fileCount)
         self.children = children
+        self.isPackage = isPackage
     }
 }
 
