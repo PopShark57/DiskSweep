@@ -143,7 +143,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) }
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .applicationCaches:
@@ -157,7 +159,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.applicationCacheLocations)) }
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.applicationCacheLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .developerFiles:
@@ -169,7 +173,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations)) }
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .downloads:
@@ -191,7 +197,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: { model.requestCleanupReview(scope: .locations([.trash])) }
+                reviewCleanup: { model.requestCleanupReview(scope: .locations([.trash])) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .largeFiles:

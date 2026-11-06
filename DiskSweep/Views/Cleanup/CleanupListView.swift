@@ -9,6 +9,8 @@ struct CleanupListView: View {
     let isScanning: Bool
     let scan: () -> Void
     let reviewCleanup: () -> Void
+    let quickLook: (URL) -> Void
+    let reveal: (URL) -> Void
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
@@ -21,31 +23,30 @@ struct CleanupListView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                PageHeader(title: title, subtitle: subtitle, symbol: symbol)
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader(title: title, subtitle: subtitle, symbol: symbol)
+                .padding(.horizontal, 28)
+                .padding(.top, 28)
+                .padding(.bottom, 16)
 
-                if categories.isEmpty && !isScanning {
-                    EmptyAnalysisView(
-                        title: "No Scan Results",
-                        message: "Run a scan to inspect these locations. Scanning never deletes files.",
-                        symbol: symbol,
-                        buttonTitle: "Scan Now",
-                        action: scan
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 380)
-                } else {
-                    ForEach(categories) { category in
-                        CleanupCategoryCard(
-                            category: category,
-                            selectedItemIDs: $selectedItemIDs,
-                            searchText: searchText
-                        )
-                    }
-                }
+            if categories.isEmpty && !isScanning {
+                EmptyAnalysisView(
+                    title: "No Scan Results",
+                    message: "Run a scan to inspect these locations. Scanning never deletes files.",
+                    symbol: symbol,
+                    buttonTitle: "Scan Now",
+                    action: scan
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                CleanupItemsList(
+                    categories: categories,
+                    checkedItemIDs: $selectedItemIDs,
+                    searchText: searchText,
+                    quickLook: quickLook,
+                    reveal: reveal
+                )
             }
-            .padding(28)
-            .frame(maxWidth: 1060, alignment: .leading)
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search results")
         .searchFocused($isSearchFocused)

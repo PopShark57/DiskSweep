@@ -71,11 +71,13 @@ The interface uses standard macOS navigation, materials, menus, shortcuts, light
 | ⌘. | Cancel Scan (only while a scan runs) |
 | ⌘F | Find (focus the search field) |
 | ⌘Y | Quick Look the selected file |
-| Space | Quick Look, when the Large Files table has focus |
+| Space | In Large Files: Quick Look. In the cleanup, Trash, Downloads, and Duplicates lists: check or uncheck the highlighted rows |
+| Return or double-click | Quick Look the highlighted row in any list |
+| ↑ ↓, ⌘A | Move or extend the highlight in a list |
 | ⇧⌘F | Reveal the selected file in Finder |
 | ⌘, | Settings |
 
-Space and Esc are never menu shortcuts, so they keep working in search fields.
+Space and Esc are never menu shortcuts, so they keep working in search fields. In lists, the highlight (arrow keys, ⌘A) and the checkboxes are separate: only checked items are reviewed and cleaned. Each list row also has a context menu with Quick Look and Reveal in Finder.
 
 ## Screenshots
 
