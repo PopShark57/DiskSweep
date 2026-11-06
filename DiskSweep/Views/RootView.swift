@@ -232,7 +232,10 @@ struct RootView: View {
             )
 
         case .history:
-            HistoryView(entries: model.history.entries)
+            HistoryView(
+                entries: model.history.entries,
+                persistenceError: model.history.lastPersistenceError
+            )
 
         case .settings:
             SettingsView(

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     let entries: [CleanupHistoryEntry]
+    var persistenceError: String?
 
     private var totalRecovered: Int64 {
         entries.reduce(0) { $0 + $1.bytesRecovered }
@@ -19,6 +20,10 @@ struct HistoryView: View {
                     subtitle: "A private, on-device record of completed cleanups.",
                     symbol: "clock.arrow.trianglehead.counterclockwise.rotate.90"
                 )
+
+                if let persistenceError {
+                    PersistenceErrorBanner(message: persistenceError)
+                }
 
                 if entries.isEmpty {
                     ContentUnavailableView(

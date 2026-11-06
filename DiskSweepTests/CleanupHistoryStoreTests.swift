@@ -145,6 +145,74 @@ final class CleanupHistoryStoreTests: XCTestCase {
         XCTAssertNotNil(store.lastPersistenceError)
     }
 
+    // MARK: - Tolerant, non-destructive loading (D5)
+
+    func testUnknownCategoryAndDamagedEntryAreDroppedButValidEntriesLoad() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("history.json")
+        let validID = UUID()
+        let mixedID = UUID()
+        let json = """
+        [
+          {"id": "\(validID.uuidString)", "date": 100, "bytesRecovered": 10,
+           "bytesMovedToTrash": 0, "fileCount": 1, "categories": ["userCaches"], "failureCount": 0},
+          {"id": "\(mixedID.uuidString)", "date": 200, "bytesRecovered": 20,
+           "bytesMovedToTrash": 0, "fileCount": 2,
+           "categories": ["userLogs", "categoryFromTheFuture"], "failureCount": 0},
+          {"id": "not-a-uuid", "date": "yesterday"}
+        ]
+        """
+        try Data(json.utf8).write(to: fileURL)
+
+        let store = CleanupHistoryStore(fileURL: fileURL)
+
+        XCTAssertNil(store.lastPersistenceError)
+        XCTAssertFalse(store.isReadOnly)
+        XCTAssertEqual(Set(store.entries.map(\.id)), [validID, mixedID])
+        XCTAssertEqual(store.entries.first { $0.id == mixedID }?.categories, [.userLogs])
+    }
+
+    func testInvalidJSONIsSetAsideBeforeAnyWrite() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("cleanup-history.json")
+        let original = Data("{ this is not JSON".utf8)
+        try original.write(to: fileURL)
+
+        let store = CleanupHistoryStore(fileURL: fileURL)
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertFalse(store.isReadOnly)
+        XCTAssertNotNil(store.lastPersistenceError)
+        let backup = try XCTUnwrap(store.unreadableFileBackupURL)
+        XCTAssertTrue(backup.lastPathComponent.hasPrefix("cleanup-history.unreadable-"))
+        XCTAssertEqual(try Data(contentsOf: backup), original)
+
+        try store.add(makeEntry(date: Date(), bytes: 5))
+        XCTAssertEqual(try Data(contentsOf: backup), original, "The backup must keep the original bytes")
+        XCTAssertEqual(CleanupHistoryStore(fileURL: fileURL).entries.count, 1)
+    }
+
+    func testUnreadableFileThatCannotBeSetAsideMakesStoreReadOnly() throws {
+        let directory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let fileURL = directory.appendingPathComponent("cleanup-history.json")
+        let original = Data("garbage".utf8)
+        try original.write(to: fileURL)
+        // A read-only folder: the file can't be renamed or replaced.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+
+        let store = CleanupHistoryStore(fileURL: fileURL)
+        XCTAssertTrue(store.isReadOnly)
+        XCTAssertNotNil(store.lastPersistenceError)
+        XCTAssertThrowsError(try store.add(makeEntry(date: Date(), bytes: 5)))
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertEqual(try Data(contentsOf: fileURL), original)
+    }
+
     private func makeEntry(date: Date, bytes: Int64) -> CleanupHistoryEntry {
         CleanupHistoryEntry(
             date: date,

@@ -121,6 +121,67 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.isScanLocationEnabled(.userLogs))
     }
 
+    // MARK: - Tolerant, non-destructive loading (D5)
+
+    func testUnknownLocationIsDroppedAndOtherSettingsSurvive() throws {
+        let defaults = makeUserDefaults()
+        let stored = """
+        {
+          "version": 2,
+          "general": {
+            "confirmBeforeCleanup": false,
+            "preferMoveToTrash": false,
+            "showHiddenFiles": true,
+            "automaticallyScanOnLaunch": true
+          },
+          "scan": { "includedLocations": ["userCaches", "categoryFromTheFuture"] },
+          "exclusions": {
+            "customURLs": [],
+            "excludeVersionControlMetadata": true,
+            "excludeNodeModulesFromDeepScans": true,
+            "excludeCloudPlaceholders": true,
+            "excludePhotoLibraries": true,
+            "excludeTimeMachineBackups": true,
+            "excludePackageContents": true
+          },
+          "developer": {
+            "isEnabled": true,
+            "includedLocations": ["xcodeDerivedData", "anotherFutureCategory"],
+            "projectFolders": [],
+            "projectIdleDays": 30
+          },
+          "privacy": { "keepLocalCleanupHistory": false }
+        }
+        """
+        defaults.set(Data(stored.utf8), forKey: "settings")
+
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+
+        XCTAssertNil(store.lastPersistenceError)
+        XCTAssertEqual(store.scan.includedLocations, [.userCaches])
+        XCTAssertEqual(store.developer.includedLocations, [.xcodeDerivedData])
+        XCTAssertFalse(store.general.confirmBeforeCleanup)
+        XCTAssertTrue(store.general.showHiddenFiles)
+        XCTAssertEqual(store.developer.projectIdleDays, 30)
+        XCTAssertFalse(store.privacy.keepLocalCleanupHistory)
+        XCTAssertNil(defaults.data(forKey: "settings.unreadable"))
+    }
+
+    func testGarbageSettingsAreBackedUpBeforeDefaultsReplaceThem() {
+        let defaults = makeUserDefaults()
+        let garbage = Data("not settings".utf8)
+        defaults.set(garbage, forKey: "settings")
+
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertNotNil(store.lastPersistenceError)
+        XCTAssertEqual(store.general, .defaults)
+        XCTAssertEqual(defaults.data(forKey: "settings.unreadable"), garbage)
+
+        store.general.showHiddenFiles = true
+        XCTAssertEqual(defaults.data(forKey: "settings.unreadable"), garbage)
+        XCTAssertNotEqual(defaults.data(forKey: "settings"), garbage)
+    }
+
     func testNewCategoriesTurnedOffAfterMigrationStayOff() {
         let defaults = makeUserDefaults()
         let legacy = """

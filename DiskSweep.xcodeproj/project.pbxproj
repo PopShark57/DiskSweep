@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00531BAD43B9026963111767 /* AppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0EA034555E8508EF26446 /* AppViewModelTests.swift */; };
 		016CD8AA1765888A8C307679 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA056D924C6FF1BF88816A14 /* OverviewView.swift */; };
+		090AD32E8CA11EB35201C970 /* LossyCodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C075B2E6ADFA601FC63B9F /* LossyCodable.swift */; };
 		093FFBA1B0C6C9679A65A9C6 /* SidebarDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9AE05BEB9E7A1BC30D7AD88 /* SidebarDestination.swift */; };
 		0DC6A2B2164E3982DADA6837 /* FileSystemScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D4212B28E8E230EB93F36A /* FileSystemScanner.swift */; };
 		102079302782C3B56B095927 /* LargeFileAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263F2D18EA3A40B1E637AA3C /* LargeFileAnalyzer.swift */; };
@@ -23,6 +24,7 @@
 		254CDE1C9E00C5BD19D2C484 /* ElectronAppCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4EE8321CABFA77AFBEF8126 /* ElectronAppCacheProvider.swift */; };
 		27C26503C8C7774791961577 /* CleanupSnapshotRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FC40229A876A403ABD36A6 /* CleanupSnapshotRegistryTests.swift */; };
 		2F3AE18E2DE9EFD1B2060843 /* AnalyzerLargeFileAndFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8A75022F490B0A489FE553 /* AnalyzerLargeFileAndFolderTests.swift */; };
+		32CDC4DE24621377DCBA0C35 /* PersistenceErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A4A42F93457971B96A2C6B /* PersistenceErrorBanner.swift */; };
 		3B069E4204F5C2C340991FCC /* CleanupHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 855422381EB6E4FA445F24C1 /* CleanupHistoryStore.swift */; };
 		3DED75202E47DC27593443B9 /* CleanupEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 055BD48287EC79E45C88E373 /* CleanupEngineTests.swift */; };
 		3F70B44FAA9D3CCA13992BFA /* DiskSweepApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCAF8DC6DFBA498336C28F8 /* DiskSweepApp.swift */; };
@@ -165,6 +167,7 @@
 		AF336B45D969C51D879F8A0A /* StorageVisualization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageVisualization.swift; sourceTree = "<group>"; };
 		B1A50F7AA08BAC5F28C0E4DC /* FinderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderService.swift; sourceTree = "<group>"; };
 		B1E6C3501B112D0ADEED42D5 /* AnalyzerFileSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzerFileSystem.swift; sourceTree = "<group>"; };
+		B6C075B2E6ADFA601FC63B9F /* LossyCodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LossyCodable.swift; sourceTree = "<group>"; };
 		B8E53854EEECE1103C8909DB /* CleanupEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupEngine.swift; sourceTree = "<group>"; };
 		BA58D8A6A8EBF030DE32687C /* LargeFolderAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFolderAnalyzer.swift; sourceTree = "<group>"; };
 		BBD7DBB554F314D7753C3708 /* DirectorySizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectorySizer.swift; sourceTree = "<group>"; };
@@ -189,6 +192,7 @@
 		EED44E5113E8BB89B9244EFC /* DiskSweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DiskSweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F893D85C309C63C4A4DE1A /* CleanupReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupReviewView.swift; sourceTree = "<group>"; };
 		F4EE8321CABFA77AFBEF8126 /* ElectronAppCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectronAppCacheProvider.swift; sourceTree = "<group>"; };
+		F9A4A42F93457971B96A2C6B /* PersistenceErrorBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceErrorBanner.swift; sourceTree = "<group>"; };
 		FA005134DA143EBD881871E6 /* DiskStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskStatistics.swift; sourceTree = "<group>"; };
 		FC3129452FE7B4EEDDC0F006 /* CleanupCategoryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupCategoryCard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -341,6 +345,7 @@
 			children = (
 				FC3129452FE7B4EEDDC0F006 /* CleanupCategoryCard.swift */,
 				001899A00A422ED9B331F81B /* DesignSystem.swift */,
+				F9A4A42F93457971B96A2C6B /* PersistenceErrorBanner.swift */,
 				573B722D5DE8A5FA7CDE20E0 /* ScanProgressView.swift */,
 				AF336B45D969C51D879F8A0A /* StorageVisualization.swift */,
 			);
@@ -356,6 +361,7 @@
 				DF4F81307FF49CC726E3E71F /* CleanupRisk.swift */,
 				FA005134DA143EBD881871E6 /* DiskStatistics.swift */,
 				D0CD2AC480138C99D0EA5895 /* FileItem.swift */,
+				B6C075B2E6ADFA601FC63B9F /* LossyCodable.swift */,
 				17676657F02213A935EFE183 /* ScanModels.swift */,
 				E9AE05BEB9E7A1BC30D7AD88 /* SidebarDestination.swift */,
 			);
@@ -551,8 +557,10 @@
 				FE4BCAA65BD1BB72780D8C37 /* LargeFoldersView.swift in Sources */,
 				ADF83CA20D5663CDF500DAB4 /* Log.swift in Sources */,
 				F0434DC74C79C203145C433F /* LogProvider.swift in Sources */,
+				090AD32E8CA11EB35201C970 /* LossyCodable.swift in Sources */,
 				016CD8AA1765888A8C307679 /* OverviewView.swift in Sources */,
 				A61182E7E88170019015C3FA /* PermissionManager.swift in Sources */,
+				32CDC4DE24621377DCBA0C35 /* PersistenceErrorBanner.swift in Sources */,
 				A98846C2445CF1FF7F1FA376 /* ProjectArtifactsProvider.swift in Sources */,
 				FD0384B77A08A52126D764DA /* ProviderSupport.swift in Sources */,
 				A4DC5014FD228F7FE199D8F3 /* RootView.swift in Sources */,

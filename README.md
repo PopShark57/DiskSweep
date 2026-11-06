@@ -52,6 +52,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
   ~/Library/Application Support/DiskSweep/cleanup-history.json
   ```
 
+- Settings and history load tolerantly. A category this build doesn't know (for example after a downgrade) is dropped instead of discarding everything, and one damaged history entry doesn't discard the others. An unreadable history file is moved aside as `cleanup-history.unreadable-<date>.json` before anything is written, and unreadable settings are kept under `com.disksweep.settings.v1.unreadable`; if the history file can't be moved aside, history becomes read-only rather than overwriting it. The History and Settings screens show these problems in a banner.
 - Native Finder reveal and Quick Look support.
 - A conservative Full Disk Access status explanation and a native link to the corresponding System Settings pane.
 

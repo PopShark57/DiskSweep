@@ -58,6 +58,10 @@ struct SettingsView: View {
                         symbol: selectedTab.symbol
                     )
 
+                    if let error = settings.lastPersistenceError {
+                        PersistenceErrorBanner(message: error)
+                    }
+
                     switch selectedTab {
                     case .general: generalSettings
                     case .scan: scanSettings

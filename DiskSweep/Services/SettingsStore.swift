@@ -21,6 +21,18 @@ struct ScanSettings: Codable, Hashable, Sendable {
     static let defaults = ScanSettings(
         includedLocations: Set(CleanupLocation.allCases.filter { $0 != .downloads })
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case includedLocations
+    }
+}
+
+extension ScanSettings {
+    // Unknown categories, such as one from a newer build, are dropped instead of failing.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        includedLocations = try container.decodeLossyLocationSet(forKey: .includedLocations)
+    }
 }
 
 struct ExclusionSettings: Codable, Hashable, Sendable {
@@ -80,10 +92,7 @@ extension DeveloperSettings {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
-        includedLocations = try container.decode(
-            Set<CleanupLocation>.self,
-            forKey: .includedLocations
-        )
+        includedLocations = try container.decodeLossyLocationSet(forKey: .includedLocations)
         projectFolders = try container.decodeIfPresent(
             [URL].self,
             forKey: .projectFolders
@@ -113,6 +122,10 @@ struct PrivacySettings: Codable, Hashable, Sendable {
 @Observable
 final class SettingsStore {
     static let defaultStorageKey = "com.disksweep.settings.v1"
+
+    /// Where settings that couldn't be decoded are kept, next to the live key, before
+    /// defaults replace them.
+    var unreadableStorageKey: String { storageKey + ".unreadable" }
 
     var general: GeneralSettings {
         didSet { saveUnlessRestoring() }
@@ -201,7 +214,9 @@ final class SettingsStore {
                 lastPersistenceError = nil
             } catch {
                 loaded = .defaults
-                lastPersistenceError = "Settings could not be read and defaults were restored: \(error.localizedDescription)"
+                // Keep the original bytes before anything can overwrite them.
+                userDefaults.set(data, forKey: storageKey + ".unreadable")
+                lastPersistenceError = "Settings could not be read and defaults were restored. A copy of the unreadable settings was kept. \(error.localizedDescription)"
                 Log.persistence.error(
                     "Settings could not be decoded: \(error.localizedDescription, privacy: .public)"
                 )

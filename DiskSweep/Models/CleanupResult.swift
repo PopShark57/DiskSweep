@@ -128,7 +128,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         date = try container.decode(Date.self, forKey: .date)
         let legacyRecovered = max(0, try container.decode(Int64.self, forKey: .bytesRecovered))
         fileCount = max(0, try container.decode(Int.self, forKey: .fileCount))
-        categories = try container.decode([CleanupLocation].self, forKey: .categories)
+        categories = try container.decodeLossyLocations(forKey: .categories)
         failureCount = max(0, try container.decode(Int.self, forKey: .failureCount))
 
         if let recordedTrashBytes = try container.decodeIfPresent(

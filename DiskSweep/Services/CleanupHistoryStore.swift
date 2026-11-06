@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+enum CleanupHistoryStoreError: Error, LocalizedError, Sendable {
+    case readOnly
+
+    var errorDescription: String? {
+        "Cleanup history is read-only because an unreadable history file couldn't be set aside. DiskSweep won't overwrite it."
+    }
+}
+
 /// A bounded, local-only cleanup history persisted under Application Support.
 @MainActor
 @Observable
@@ -9,6 +17,11 @@ final class CleanupHistoryStore {
 
     private(set) var entries: [CleanupHistoryEntry] = []
     private(set) var lastPersistenceError: String?
+    /// Set when the history file couldn't be read and couldn't be moved aside either. Nothing
+    /// is written in this state, so the original file is never overwritten.
+    private(set) var isReadOnly = false
+    /// Where an unreadable history file was moved, if that happened at launch.
+    private(set) var unreadableFileBackupURL: URL?
 
     let fileURL: URL
     let maximumEntries: Int
@@ -106,7 +119,11 @@ final class CleanupHistoryStore {
 
         do {
             let data = try Data(contentsOf: fileURL)
-            entries = try JSONDecoder().decode([CleanupHistoryEntry].self, from: data)
+            // Entries are decoded one by one, so a single damaged entry is dropped instead of
+            // the whole history.
+            entries = try JSONDecoder()
+                .decode([LossyDecodable<CleanupHistoryEntry>].self, from: data)
+                .compactMap(\.value)
             normalizeEntries()
             lastPersistenceError = nil
         } catch {
@@ -123,6 +140,32 @@ final class CleanupHistoryStore {
             try reload()
         } catch {
             entries = []
+            setAsideUnreadableFile()
+        }
+    }
+
+    /// Moves an unreadable history file next to itself before anything can be written over
+    /// it. If that fails, the store becomes read-only.
+    private func setAsideUnreadableFile() {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let backup = fileURL.deletingLastPathComponent().appendingPathComponent(
+            "cleanup-history.unreadable-\(timestamp).json",
+            isDirectory: false
+        )
+        do {
+            try fileManager.moveItem(at: fileURL, to: backup)
+            unreadableFileBackupURL = backup
+            lastPersistenceError = "Cleanup history couldn't be read, so DiskSweep started a new history. The unreadable file was kept as \(backup.lastPathComponent)."
+            Log.persistence.error(
+                "Moved unreadable cleanup history aside to \(backup.path, privacy: .private)"
+            )
+        } catch {
+            isReadOnly = true
+            lastPersistenceError = "Cleanup history couldn't be read or set aside, so DiskSweep won't record new cleanups until it can. \(error.localizedDescription)"
+            Log.persistence.error(
+                "Cleanup history is read-only: \(error.localizedDescription, privacy: .private)"
+            )
         }
     }
 
@@ -140,6 +183,9 @@ final class CleanupHistoryStore {
     }
 
     private func persist() throws {
+        guard !isReadOnly else {
+            throw CleanupHistoryStoreError.readOnly
+        }
         do {
             try fileManager.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
