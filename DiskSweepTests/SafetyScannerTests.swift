@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class SafetyScannerTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -97,7 +98,7 @@ final class SafetyScannerTests: XCTestCase {
             homeDirectory: home,
             minimumAge: 30 * 86_400
         ).scan(
-            context: ScanContext(homeDirectory: home, now: now),
+            context: ScanContext(homeDirectory: home, now: now, snapshots: snapshots),
             progress: { update in
                 guard update.phase == .enumerating else { return }
                 try? FileManager.default.setAttributes(
@@ -134,7 +135,7 @@ final class SafetyScannerTests: XCTestCase {
             providerID: "partial-directory-test",
             location: .temporaryFiles,
             roots: [root],
-            context: ScanContext(exclusions: [excludedDirectory]),
+            context: ScanContext(exclusions: [excludedDirectory], snapshots: snapshots),
             progress: { _ in },
             forceDefaultSelection: false
         )
@@ -168,7 +169,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await XcodeArchivesProvider(homeDirectory: home).scan(
-            context: ScanContext(homeDirectory: home),
+            context: ScanContext(homeDirectory: home, snapshots: snapshots),
             progress: { _ in }
         )
 
@@ -191,9 +192,10 @@ final class SafetyScannerTests: XCTestCase {
         let finalBatch = expectation(description: "temporary scan reached final batch")
         finalBatch.assertForOverFulfill = false
 
+        let context = ScanContext(now: now, snapshots: snapshots)
         let task = Task {
             await provider.scan(
-                context: ScanContext(now: now),
+                context: context,
                 progress: { update in
                     guard update.phase == .enumerating,
                           update.filesAnalyzed > 0 else { return }
@@ -221,7 +223,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await provider.scan(
-            context: ScanContext(now: now),
+            context: ScanContext(now: now, snapshots: snapshots),
             progress: { update in
                 guard update.phase == .enumerating else { return }
                 try? FileManager.default.setAttributes(
@@ -256,7 +258,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await provider.scan(
-            context: ScanContext(),
+            context: ScanContext(snapshots: snapshots),
             progress: { _ in }
         )
 
@@ -273,12 +275,13 @@ final class SafetyScannerTests: XCTestCase {
         let firstCandidate = expectation(description: "provider emitted progress")
         firstCandidate.assertForOverFulfill = false
 
+        let context = ScanContext(snapshots: snapshots)
         let task = Task {
             await ProviderSupport.scanChildren(
                 providerID: "cancelled-provider-test",
                 location: .temporaryFiles,
                 roots: [scanRoot],
-                context: ScanContext(),
+                context: context,
                 progress: { update in
                     guard update.phase == .enumerating else { return }
                     firstCandidate.fulfill()

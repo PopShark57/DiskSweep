@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class AnalyzerLargeFileAndFolderTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     func testLargeFileScanHonorsThresholdHiddenFilesAndExclusions() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("visible-large.bin", data: Data(repeating: 1, count: 220))
@@ -16,7 +17,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let hiddenOff = ScanContext(
             homeDirectory: temporary.url,
             exclusions: [excluded],
-            showHiddenFiles: false
+            showHiddenFiles: false,
+            snapshots: snapshots
         )
         let analyzer = LargeFileAnalyzer(progressBatchSize: 1)
         let firstResult = try await analyzer.scan(
@@ -31,7 +33,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let hiddenOn = ScanContext(
             homeDirectory: temporary.url,
             exclusions: [excluded],
-            showHiddenFiles: true
+            showHiddenFiles: true,
+            snapshots: snapshots
         )
         let secondResult = try await analyzer.scan(
             root: temporary.url,
@@ -61,7 +64,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
 
         let context = ScanContext(
             homeDirectory: temporary.url,
-            showHiddenFiles: true
+            showHiddenFiles: true,
+            snapshots: snapshots
         )
         let result = try await LargeFolderAnalyzer(progressBatchSize: 1).scan(
             root: temporary.url,
@@ -90,7 +94,7 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("Large/file.bin", data: Data(repeating: 1, count: 40))
         try temporary.file("Small/file.bin", data: Data(repeating: 2, count: 5))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await LargeFolderAnalyzer().scan(
             minimumRetainedFolderSize: 10,
@@ -105,7 +109,7 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
     func testDiskUsageAnalyzerAnchorsTreeAtHomeDirectory() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("Documents/file.txt", data: Data(repeating: 7, count: 12))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DiskUsageAnalyzer().scanHomeDirectory(context: context)
 

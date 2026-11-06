@@ -251,7 +251,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
             }
             try Task.checkCancellation()
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             if error is CancellationError || Task.isCancelled {
                 return ProviderScanResult(
                     location: location,
@@ -274,7 +274,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         }
 
         items.sort { $0.size > $1.size }
-        CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: snapshots)
+        context.snapshots.replace(providerID: id, snapshots: snapshots)
         await progress(ScanProgress(
             phase: .completed,
             location: location,

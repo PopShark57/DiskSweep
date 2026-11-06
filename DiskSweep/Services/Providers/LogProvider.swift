@@ -30,7 +30,7 @@ struct LogProvider: CleanupProvider {
         var issues: [ScanIssue] = []
 
         guard let root = ProviderSupport.existingDirectories(allowedRoots).first else {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: [])
         }
@@ -43,7 +43,7 @@ struct LogProvider: CleanupProvider {
                 path: root.path,
                 message: error.localizedDescription
             ))
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: issues)
         }
@@ -135,7 +135,7 @@ struct LogProvider: CleanupProvider {
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
 
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -147,7 +147,7 @@ struct LogProvider: CleanupProvider {
                 issues: issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -158,7 +158,7 @@ struct LogProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],

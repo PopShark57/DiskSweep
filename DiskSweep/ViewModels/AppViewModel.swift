@@ -43,6 +43,9 @@ final class AppViewModel {
     @ObservationIgnored private let standardProviders: [any CleanupProvider]
     @ObservationIgnored private let diskService: DiskService
     @ObservationIgnored private let cleanupEngine: CleanupEngine
+    /// Shared by every scan context and the cleanup engine, so cleanup finds the identities
+    /// the scan recorded.
+    @ObservationIgnored let snapshots: CleanupSnapshotRegistry
     @ObservationIgnored private let finderService: FinderService
     @ObservationIgnored private var cleanupScanTask: Task<Void, Never>?
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
@@ -56,7 +59,8 @@ final class AppViewModel {
         history: CleanupHistoryStore = CleanupHistoryStore(),
         permissions: PermissionManager = PermissionManager(),
         diskService: DiskService = DiskService(),
-        cleanupEngine: CleanupEngine = CleanupEngine(),
+        snapshots: CleanupSnapshotRegistry = CleanupSnapshotRegistry(),
+        cleanupEngine: CleanupEngine? = nil,
         finderService: FinderService = .shared
     ) {
         let home = homeDirectory.standardizedFileURL
@@ -65,7 +69,12 @@ final class AppViewModel {
         self.history = history
         self.permissions = permissions
         self.diskService = diskService
-        self.cleanupEngine = cleanupEngine
+        self.snapshots = snapshots
+        // An injected engine must be built with the same registry.
+        self.cleanupEngine = cleanupEngine ?? CleanupEngine(
+            diskService: diskService,
+            snapshots: snapshots
+        )
         self.finderService = finderService
         standardProviders = StandardCleanupProviders.all(
             homeDirectory: home,
@@ -105,7 +114,7 @@ final class AppViewModel {
 
         let downloadItems = downloadsAnalysis.allFiles
             .filter { selectedDownloadFileIDs.contains($0.id) }
-            .compactMap(provider.cleanupItem(for:))
+            .compactMap { provider.cleanupItem(for: $0, registry: snapshots) }
         return categoryItems + downloadItems
     }
 
@@ -414,7 +423,8 @@ final class AppViewModel {
             excludeCloudPlaceholders: settings.exclusions.excludeCloudPlaceholders,
             excludePhotoLibraries: settings.exclusions.excludePhotoLibraries,
             excludeTimeMachineBackups: settings.exclusions.excludeTimeMachineBackups,
-            excludePackageContents: settings.exclusions.excludePackageContents
+            excludePackageContents: settings.exclusions.excludePackageContents,
+            snapshots: snapshots
         )
     }
 

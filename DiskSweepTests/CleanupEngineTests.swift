@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class CleanupEngineTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -146,7 +147,7 @@ final class CleanupEngineTests: XCTestCase {
 
         let provider = TestDirectoryProvider(root: root)
         let scan = await provider.scan(
-            context: ScanContext(exclusions: [excluded])
+            context: ScanContext(exclusions: [excluded], snapshots: snapshots)
         ) { _ in }
         let scannedItem = try XCTUnwrap(scan.items.first { $0.url == parent })
         XCTAssertFalse(scannedItem.isDeletable)
@@ -163,12 +164,39 @@ final class CleanupEngineTests: XCTestCase {
         XCTAssertEqual(result.failures.count, 1)
     }
 
+    /// 1.3 wiring test: a scan that recorded its identities in one registry can't be cleaned
+    /// by an engine that reads another. The engine refuses instead of skipping the check.
+    func testEngineWithDifferentRegistryRefusesScannedItems() async throws {
+        let directory = root.appendingPathComponent("Scanned", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("cache".utf8).write(to: directory.appendingPathComponent("a.cache"))
+
+        let provider = TestDirectoryProvider(root: root)
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
+        let scannedItem = try XCTUnwrap(scan.items.first { $0.url == directory })
+        XCTAssertTrue(scannedItem.isDeletable)
+
+        let otherEngine = CleanupEngine(
+            safetyValidator: SafetyValidator(
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+                temporaryDirectory: FileManager.default.temporaryDirectory
+            ),
+            snapshots: CleanupSnapshotRegistry()
+        )
+        let result = await otherEngine.clean([scannedItem], providers: [provider], disposition: .permanent)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertTrue(result.failures.first?.reason.contains("scan-time file identity is unavailable") == true)
+    }
+
     func testDirectoryReplacementAfterProviderScanIsRejected() async throws {
         let directory = root.appendingPathComponent("ReplaceMe", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("old".utf8).write(to: directory.appendingPathComponent("old.cache"))
         let provider = TestDirectoryProvider(root: root)
-        let scan = await provider.scan(context: ScanContext()) { _ in }
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
         let scannedItem = try XCTUnwrap(scan.items.first { $0.url == directory })
 
         try FileManager.default.removeItem(at: directory)
@@ -196,11 +224,11 @@ final class CleanupEngineTests: XCTestCase {
         let provider = DownloadsProvider(homeDirectory: home)
         let analysis = try await DownloadsAnalyzer().scan(
             root: downloads,
-            context: ScanContext(homeDirectory: home, showHiddenFiles: true)
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
         )
         let fileItem = try XCTUnwrap(analysis.allFiles.first)
 
-        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem))
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem, registry: snapshots))
         XCTAssertEqual(cleanupItem.providerID, DownloadsProvider.providerID)
         XCTAssertEqual(cleanupItem.risk, .userFiles)
         XCTAssertFalse(cleanupItem.isSelectedByDefault)
@@ -222,11 +250,11 @@ final class CleanupEngineTests: XCTestCase {
         let provider = DownloadsProvider(homeDirectory: home)
         let analysis = try await DownloadsAnalyzer().scan(
             root: downloads,
-            context: ScanContext(homeDirectory: home, showHiddenFiles: true)
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
         )
         let fileItem = try XCTUnwrap(analysis.allFiles.first)
         let scannedIdentity = try XCTUnwrap(
-            CleanupSnapshotRegistry.shared.snapshot(
+            snapshots.snapshot(
                 providerID: DownloadsProvider.analysisSnapshotProviderID,
                 itemID: fileItem.id
             )?.identity
@@ -242,12 +270,13 @@ final class CleanupEngineTests: XCTestCase {
         try FileManager.default.moveItem(at: stagedReplacement, to: original)
         XCTAssertNotEqual(scannedIdentity, try SafetyValidator.captureIdentity(at: original))
 
-        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem))
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem, registry: snapshots))
         let downloadsEngine = CleanupEngine(
             safetyValidator: SafetyValidator(
                 homeDirectory: home,
                 temporaryDirectory: FileManager.default.temporaryDirectory
-            )
+            ),
+            snapshots: snapshots
         )
         let result = await downloadsEngine.clean(
             [cleanupItem],
@@ -361,7 +390,8 @@ final class CleanupEngineTests: XCTestCase {
             safetyValidator: SafetyValidator(
                 homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
                 temporaryDirectory: FileManager.default.temporaryDirectory
-            )
+            ),
+            snapshots: snapshots
         )
     }
 

@@ -294,7 +294,7 @@ enum AnalyzerFileSystem {
         let item = metadata.fileItem
         if purpose == .downloads,
            let identity = try? SafetyValidator.captureIdentity(at: metadata.url) {
-            CleanupSnapshotRegistry.shared.record(
+            context.snapshots.record(
                 providerID: DownloadsProvider.analysisSnapshotProviderID,
                 itemID: item.id,
                 identity: identity,

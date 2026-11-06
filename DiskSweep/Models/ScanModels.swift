@@ -110,6 +110,8 @@ struct ScanContext: Sendable {
     let excludeTimeMachineBackups: Bool
     let excludePackageContents: Bool
     let now: Date
+    /// Where providers and analyzers record scan-time identities for the cleanup engine.
+    let snapshots: CleanupSnapshotRegistry
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -121,7 +123,8 @@ struct ScanContext: Sendable {
         excludePhotoLibraries: Bool = true,
         excludeTimeMachineBackups: Bool = true,
         excludePackageContents: Bool = true,
-        now: Date = Date()
+        now: Date = Date(),
+        snapshots: CleanupSnapshotRegistry = .shared
     ) {
         self.homeDirectory = homeDirectory
         self.exclusions = exclusions
@@ -133,5 +136,6 @@ struct ScanContext: Sendable {
         self.excludeTimeMachineBackups = excludeTimeMachineBackups
         self.excludePackageContents = excludePackageContents
         self.now = now
+        self.snapshots = snapshots
     }
 }

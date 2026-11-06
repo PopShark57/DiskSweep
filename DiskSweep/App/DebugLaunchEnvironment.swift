@@ -38,6 +38,7 @@ enum DebugLaunchEnvironment {
             "Library/Application Support/DiskSweep",
             isDirectory: true
         )
+        let snapshots = CleanupSnapshotRegistry()
         return AppViewModel(
             homeDirectory: home,
             temporaryDirectory: home.appendingPathComponent("tmp", isDirectory: true),
@@ -46,7 +47,11 @@ enum DebugLaunchEnvironment {
                 fileURL: support.appendingPathComponent("cleanup-history.json")
             ),
             permissions: PermissionManager(homeDirectory: home),
-            cleanupEngine: CleanupEngine(safetyValidator: SafetyValidator(homeDirectory: home))
+            snapshots: snapshots,
+            cleanupEngine: CleanupEngine(
+                safetyValidator: SafetyValidator(homeDirectory: home),
+                snapshots: snapshots
+            )
         )
     }
 }

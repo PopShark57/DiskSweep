@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class DuplicateAnalyzerTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     func testDuplicateDetectionUsesStagedComparisonAndFindsExactCopies() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         let duplicateData = Data(repeating: 0x2A, count: 256 * 1_024)
@@ -12,7 +13,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         try temporary.file("C/different.bin", data: sameSizeDifferentSample)
         try temporary.file("unique.bin", data: Data(repeating: 0x2A, count: 127))
 
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
         let analyzer = DuplicateAnalyzer(
             sampleByteCount: 1_024,
             readChunkByteCount: 4_096,
@@ -36,7 +37,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("A/report.dat", data: Data(repeating: 1, count: 4_096))
         try temporary.file("B/report.dat", data: Data(repeating: 2, count: 4_096))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer(sampleByteCount: 128).scan(
             root: temporary.url,
@@ -60,7 +61,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
             at: temporary.url.appendingPathComponent("link.bin"),
             withDestinationURL: visible
         )
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
 
@@ -77,7 +78,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
             to: temporary.url.appendingPathComponent("alias.bin")
         )
         try temporary.file("independent-copy.bin", data: data)
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
 
@@ -91,7 +92,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         try temporary.file("A.bin", data: data)
         try temporary.file("B.bin", data: data)
         try temporary.file("C.bin", data: data)
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
         let analyzer = DuplicateAnalyzer()
         let result = try await analyzer.scan(root: temporary.url, context: context)
         let group = try XCTUnwrap(result.groups.first)
@@ -109,7 +110,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         let temporary = try AnalyzerTemporaryDirectory()
         let nested = try temporary.directory("Nested")
         try temporary.file("Nested/only.bin", data: Data(repeating: 1, count: 1_024))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(
             roots: [temporary.url, nested],

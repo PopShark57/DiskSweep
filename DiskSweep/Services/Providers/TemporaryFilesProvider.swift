@@ -121,7 +121,7 @@ struct TemporaryFilesProvider: CleanupProvider {
             try Task.checkCancellation()
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -144,7 +144,7 @@ struct TemporaryFilesProvider: CleanupProvider {
                 issues: result.issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -155,7 +155,7 @@ struct TemporaryFilesProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],

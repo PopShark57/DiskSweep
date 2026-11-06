@@ -31,13 +31,16 @@ struct CleanupAuthorization: Sendable {
 actor CleanupEngine {
     private let safetyValidator: SafetyValidator
     private let diskService: DiskService
+    private let snapshots: CleanupSnapshotRegistry
 
     init(
         safetyValidator: SafetyValidator = SafetyValidator(),
-        diskService: DiskService = DiskService()
+        diskService: DiskService = DiskService(),
+        snapshots: CleanupSnapshotRegistry = .shared
     ) {
         self.safetyValidator = safetyValidator
         self.diskService = diskService
+        self.snapshots = snapshots
     }
 
     func clean(
@@ -119,7 +122,7 @@ actor CleanupEngine {
                 requested: disposition
             )
             let permittedNestedNames = Self.permittedNestedNames(for: item.location)
-            let scanSnapshot = CleanupSnapshotRegistry.shared.snapshot(
+            let scanSnapshot = snapshots.snapshot(
                 providerID: item.providerID,
                 itemID: item.id
             )
@@ -201,7 +204,7 @@ actor CleanupEngine {
                     removedDirectories.append(outcome.deletionURL)
                 }
             } catch is CancellationError {
-                CleanupSnapshotRegistry.shared.remove(
+                snapshots.remove(
                     providerID: item.providerID,
                     itemID: item.id
                 )
@@ -213,7 +216,7 @@ actor CleanupEngine {
                     reason: error.localizedDescription
                 ))
             }
-            CleanupSnapshotRegistry.shared.remove(
+            snapshots.remove(
                 providerID: item.providerID,
                 itemID: item.id
             )

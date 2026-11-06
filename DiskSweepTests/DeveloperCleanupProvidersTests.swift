@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class DeveloperCleanupProvidersTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
     private var home: URL!
     private let now = Date()
@@ -322,7 +323,7 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
     // MARK: - Helpers
 
     private var context: ScanContext {
-        ScanContext(homeDirectory: home, now: now)
+        ScanContext(homeDirectory: home, now: now, snapshots: snapshots)
     }
 
     private var validator: SafetyValidator {
@@ -330,7 +331,7 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
     }
 
     private var engine: CleanupEngine {
-        CleanupEngine(safetyValidator: validator)
+        CleanupEngine(safetyValidator: validator, snapshots: snapshots)
     }
 
     private func makeIDEFolder(

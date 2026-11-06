@@ -1,25 +1,29 @@
 import Foundation
+import Synchronization
 
 struct CleanupScanSnapshot: Sendable {
     let identity: FileIdentity
     let exclusionRoots: [URL]
 }
 
-final class CleanupSnapshotRegistry: @unchecked Sendable {
+/// Hands scan-time file identities from providers and analyzers to the cleanup engine.
+///
+/// A scan and the cleanup that follows must use the same instance: the engine refuses any
+/// item whose snapshot it can't find. `AppViewModel` creates one registry and passes it to
+/// both its scan contexts and its engine. Tests create their own, so they never share state.
+final class CleanupSnapshotRegistry: Sendable {
+    /// The default instance used when no registry is injected.
     static let shared = CleanupSnapshotRegistry()
 
-    private let lock = NSLock()
-    private var snapshotsByProvider: [String: [UUID: CleanupScanSnapshot]] = [:]
+    private let state = Mutex<[String: [UUID: CleanupScanSnapshot]]>([:])
 
-    private init() {}
+    init() {}
 
     func replace(
         providerID: String,
         snapshots: [UUID: CleanupScanSnapshot]
     ) {
-        lock.lock()
-        snapshotsByProvider[providerID] = snapshots
-        lock.unlock()
+        state.withLock { $0[providerID] = snapshots }
     }
 
     func record(
@@ -28,26 +32,30 @@ final class CleanupSnapshotRegistry: @unchecked Sendable {
         identity: FileIdentity,
         exclusionRoots: [URL] = []
     ) {
-        lock.lock()
-        snapshotsByProvider[providerID, default: [:]][itemID] = CleanupScanSnapshot(
-            identity: identity,
-            exclusionRoots: exclusionRoots
-        )
-        lock.unlock()
+        let snapshot = CleanupScanSnapshot(identity: identity, exclusionRoots: exclusionRoots)
+        state.withLock { $0[providerID, default: [:]][itemID] = snapshot }
     }
 
     func snapshot(providerID: String, itemID: UUID) -> CleanupScanSnapshot? {
-        lock.lock()
-        defer { lock.unlock() }
-        return snapshotsByProvider[providerID]?[itemID]
+        state.withLock { $0[providerID]?[itemID] }
     }
 
     func remove(providerID: String, itemID: UUID) {
-        lock.lock()
-        snapshotsByProvider[providerID]?[itemID] = nil
-        if snapshotsByProvider[providerID]?.isEmpty == true {
-            snapshotsByProvider[providerID] = nil
+        state.withLock { snapshots in
+            snapshots[providerID]?[itemID] = nil
+            if snapshots[providerID]?.isEmpty == true {
+                snapshots[providerID] = nil
+            }
         }
-        lock.unlock()
+    }
+
+    /// The number of snapshots recorded for a provider. Used by tests.
+    func count(providerID: String) -> Int {
+        state.withLock { $0[providerID]?.count ?? 0 }
+    }
+
+    /// Whether any snapshots are recorded for a provider. Used by tests.
+    func hasBucket(providerID: String) -> Bool {
+        state.withLock { $0[providerID] != nil }
     }
 }

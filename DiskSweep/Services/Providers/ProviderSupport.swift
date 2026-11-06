@@ -190,7 +190,7 @@ enum ProviderSupport {
                     message: "Scanning was cancelled."
                 ))
             }
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: providerID,
                 snapshots: [:]
             )
@@ -220,7 +220,7 @@ enum ProviderSupport {
             totalProviders: 1
         ))
 
-        CleanupSnapshotRegistry.shared.replace(
+        context.snapshots.replace(
             providerID: providerID,
             snapshots: snapshots
         )
@@ -351,7 +351,7 @@ enum ProviderSupport {
             }
             try Task.checkCancellation()
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: providerID, snapshots: [:])
+            context.snapshots.replace(providerID: providerID, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -364,7 +364,7 @@ enum ProviderSupport {
         }
 
         items.sort { $0.size > $1.size }
-        CleanupSnapshotRegistry.shared.replace(providerID: providerID, snapshots: snapshots)
+        context.snapshots.replace(providerID: providerID, snapshots: snapshots)
         await progress(ScanProgress(
             phase: .completed,
             location: location,

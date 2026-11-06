@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class AnalyzerDownloadsTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     func testDownloadsAreGroupedByTypeAndNeverPreselected() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         let referenceDate = Date(timeIntervalSince1970: 2_000_000_000)
@@ -19,7 +20,8 @@ final class AnalyzerDownloadsTests: XCTestCase {
         let context = ScanContext(
             homeDirectory: temporary.url,
             showHiddenFiles: true,
-            now: referenceDate
+            now: referenceDate,
+            snapshots: snapshots
         )
         let result = try await DownloadsAnalyzer(progressBatchSize: 1).scan(
             root: temporary.url,
@@ -52,7 +54,8 @@ final class AnalyzerDownloadsTests: XCTestCase {
         let context = ScanContext(
             homeDirectory: temporary.url,
             showHiddenFiles: true,
-            now: referenceDate
+            now: referenceDate,
+            snapshots: snapshots
         )
         let unfiltered = try await DownloadsAnalyzer().scan(
             root: temporary.url,
@@ -84,7 +87,8 @@ final class AnalyzerDownloadsTests: XCTestCase {
         let context = ScanContext(
             homeDirectory: temporary.url,
             exclusions: [excluded],
-            showHiddenFiles: false
+            showHiddenFiles: false,
+            snapshots: snapshots
         )
 
         let result = try await DownloadsAnalyzer().scan(

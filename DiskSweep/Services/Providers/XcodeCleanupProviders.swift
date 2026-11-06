@@ -58,7 +58,7 @@ struct XcodeArchivesProvider: CleanupProvider {
         var issues: [ScanIssue] = []
 
         guard let root = ProviderSupport.existingDirectories(allowedRoots).first else {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: [])
         }
@@ -71,7 +71,7 @@ struct XcodeArchivesProvider: CleanupProvider {
                 path: root.path,
                 message: error.localizedDescription
             ))
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: issues)
         }
@@ -202,7 +202,7 @@ struct XcodeArchivesProvider: CleanupProvider {
             try Task.checkCancellation()
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -214,7 +214,7 @@ struct XcodeArchivesProvider: CleanupProvider {
                 issues: issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -225,7 +225,7 @@ struct XcodeArchivesProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
