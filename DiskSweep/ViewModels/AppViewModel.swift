@@ -55,6 +55,7 @@ final class AppViewModel {
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory,
+        standardProviders: [any CleanupProvider]? = nil,
         settings: SettingsStore = SettingsStore(),
         history: CleanupHistoryStore = CleanupHistoryStore(),
         permissions: PermissionManager = PermissionManager(),
@@ -76,7 +77,7 @@ final class AppViewModel {
             snapshots: snapshots
         )
         self.finderService = finderService
-        standardProviders = StandardCleanupProviders.all(
+        self.standardProviders = standardProviders ?? StandardCleanupProviders.all(
             homeDirectory: home,
             temporaryDirectory: temporaryDirectory
         )
@@ -368,6 +369,23 @@ final class AppViewModel {
     }
 
     func clearError() { errorMessage = nil }
+
+    // MARK: - Test support
+
+    /// Waits for the current cleanup scan to finish. Used by tests.
+    func waitForScan() async {
+        await cleanupScanTask?.value
+    }
+
+    /// Waits for the current analysis to finish. Used by tests.
+    func waitForAnalysis() async {
+        await analysisTask?.value
+    }
+
+    /// Waits for the current cleanup to finish. Used by tests.
+    func waitForCleanup() async {
+        await cleanupTask?.value
+    }
 
     private func beginAnalysis(
         _ activity: AnalysisActivity,
