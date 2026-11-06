@@ -102,7 +102,7 @@ struct LogProvider: CleanupProvider {
                 do {
                     identity = try SafetyValidator.captureIdentity(at: file.url)
                 } catch {
-                    issues.append(FileSystemScanner.issue(for: error, at: file.url))
+                    issues.append(ScanIssue(error: error, at: file.url))
                     continue
                 }
                 let snapshotModifiedAt = identity.modificationDate
@@ -162,7 +162,7 @@ struct LogProvider: CleanupProvider {
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: root)]
+                issues: [ScanIssue(error: error, at: root)]
             )
         }
     }

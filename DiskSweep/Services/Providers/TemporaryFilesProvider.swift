@@ -159,7 +159,7 @@ struct TemporaryFilesProvider: CleanupProvider {
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: temporaryDirectory)]
+                issues: [ScanIssue(error: error, at: temporaryDirectory)]
             )
         }
     }

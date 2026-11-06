@@ -140,7 +140,7 @@ struct LargeFolderAnalyzer: Sendable {
                 options: options
             )
         } catch {
-            state.issues.append(AnalyzerFileSystem.issue(for: error, at: directory))
+            state.issues.append(ScanIssue(error: error, at: directory))
             return DirectoryNode(
                 url: directory,
                 size: 0,

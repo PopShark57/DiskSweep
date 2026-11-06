@@ -154,7 +154,7 @@ struct FileSystemScanner: Sendable {
                 includingPropertiesForKeys: Array(resourceKeys),
                 options: enumerationOptions,
                 errorHandler: { url, error in
-                    issues.append(Self.issue(for: error, at: url))
+                    issues.append(ScanIssue(error: error, at: url))
                     return true
                 }
             ) else {
@@ -197,7 +197,7 @@ struct FileSystemScanner: Sendable {
                 do {
                     values = try standardized.resourceValues(forKeys: resourceKeys)
                 } catch {
-                    issues.append(Self.issue(for: error, at: standardized))
+                    issues.append(ScanIssue(error: error, at: standardized))
                     continue
                 }
 
@@ -313,25 +313,5 @@ struct FileSystemScanner: Sendable {
         } onCancel: {
             worker.cancel()
         }
-    }
-
-    static func issue(for error: Error, at url: URL) -> ScanIssue {
-        let cocoaError = error as? CocoaError
-        let kind: ScanIssue.Kind
-
-        switch cocoaError?.code {
-        case .fileReadNoPermission, .fileWriteNoPermission:
-            kind = .permissionDenied
-        case .fileNoSuchFile:
-            kind = .disappeared
-        case .fileReadUnknown, .fileReadCorruptFile, .fileReadInapplicableStringEncoding:
-            kind = .inputOutput
-        case .none:
-            kind = .unknown
-        default:
-            kind = .inaccessible
-        }
-
-        return ScanIssue(kind: kind, path: url.path, message: error.localizedDescription)
     }
 }

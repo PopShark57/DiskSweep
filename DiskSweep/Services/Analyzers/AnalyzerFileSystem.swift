@@ -121,7 +121,7 @@ enum AnalyzerFileSystem {
                         options: options
                     )
                 } catch {
-                    issues.append(issue(for: error, at: directory))
+                    issues.append(ScanIssue(error: error, at: directory))
                     continue
                 }
 
@@ -206,7 +206,7 @@ enum AnalyzerFileSystem {
             let values = try url.resourceValues(forKeys: resourceKeys)
             return AnalyzerFileMetadata(url: url, values: values)
         } catch {
-            issueSink.append(issue(for: error, at: url))
+            issueSink.append(ScanIssue(error: error, at: url))
             return nil
         }
     }
@@ -261,46 +261,6 @@ enum AnalyzerFileSystem {
         }
 
         return false
-    }
-
-    static func issue(for error: Error, at url: URL) -> ScanIssue {
-        let nsError = error as NSError
-        let kind: ScanIssue.Kind
-
-        if nsError.domain == NSCocoaErrorDomain {
-            switch nsError.code {
-            case CocoaError.fileReadNoPermission.rawValue,
-                 CocoaError.fileWriteNoPermission.rawValue:
-                kind = .permissionDenied
-            case CocoaError.fileNoSuchFile.rawValue,
-                 CocoaError.fileReadNoSuchFile.rawValue:
-                kind = .disappeared
-            case CocoaError.fileReadUnknown.rawValue,
-                 CocoaError.fileReadCorruptFile.rawValue:
-                kind = .inputOutput
-            default:
-                kind = .inaccessible
-            }
-        } else if nsError.domain == NSPOSIXErrorDomain {
-            switch nsError.code {
-            case Int(EACCES), Int(EPERM):
-                kind = .permissionDenied
-            case Int(ENOENT):
-                kind = .disappeared
-            case Int(EIO):
-                kind = .inputOutput
-            default:
-                kind = .inaccessible
-            }
-        } else {
-            kind = .unknown
-        }
-
-        return ScanIssue(
-            kind: kind,
-            path: url.path,
-            message: nsError.localizedDescription
-        )
     }
 
     static func progressValue(

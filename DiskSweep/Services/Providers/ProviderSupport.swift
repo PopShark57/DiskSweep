@@ -70,7 +70,7 @@ enum ProviderSupport {
                 ))
                 break rootScan
             } catch {
-                issues.append(FileSystemScanner.issue(for: error, at: root))
+                issues.append(ScanIssue(error: error, at: root))
                 continue
             }
 
@@ -130,7 +130,7 @@ enum ProviderSupport {
                         ))
                         break rootScan
                     } catch {
-                        issues.append(FileSystemScanner.issue(for: error, at: child.url))
+                        issues.append(ScanIssue(error: error, at: child.url))
                         isDeletable = false
                         explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
                     }
@@ -311,7 +311,7 @@ enum ProviderSupport {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
-                        issues.append(FileSystemScanner.issue(for: error, at: candidate.url))
+                        issues.append(ScanIssue(error: error, at: candidate.url))
                         isDeletable = false
                         explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
                     }

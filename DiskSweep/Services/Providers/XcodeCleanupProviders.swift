@@ -158,7 +158,7 @@ struct XcodeArchivesProvider: CleanupProvider {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    issues.append(FileSystemScanner.issue(for: error, at: archive.url))
+                    issues.append(ScanIssue(error: error, at: archive.url))
                     isDeletable = false
                     explanation += " DiskSweep could not inspect every descendant, so this archive cannot be removed."
                 }
@@ -229,7 +229,7 @@ struct XcodeArchivesProvider: CleanupProvider {
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: root)]
+                issues: [ScanIssue(error: error, at: root)]
             )
         }
     }

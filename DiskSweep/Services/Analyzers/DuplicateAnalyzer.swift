@@ -159,7 +159,7 @@ struct DuplicateAnalyzer: Sendable {
                         diagnostics.sampledFiles += 1
                     } catch {
                         try Self.rethrowIfCancelled(error)
-                        issues.append(AnalyzerFileSystem.issue(for: error, at: file.url))
+                        issues.append(ScanIssue(error: error, at: file.url))
                     }
                 }
 
@@ -196,7 +196,7 @@ struct DuplicateAnalyzer: Sendable {
                             }
                         } catch {
                             try Self.rethrowIfCancelled(error)
-                            issues.append(AnalyzerFileSystem.issue(for: error, at: file.url))
+                            issues.append(ScanIssue(error: error, at: file.url))
                         }
                     }
 
@@ -388,7 +388,7 @@ struct DuplicateAnalyzer: Sendable {
                     }
                 } catch {
                     try rethrowIfCancelled(error)
-                    issues.append(AnalyzerFileSystem.issue(for: error, at: file.url))
+                    issues.append(ScanIssue(error: error, at: file.url))
                     continue fileLoop
                 }
             }

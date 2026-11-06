@@ -266,8 +266,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: issues + [FileSystemScanner.issue(
-                    for: error,
+                issues: issues + [ScanIssue(
+                    error: error,
                     at: roots.last ?? URL(fileURLWithPath: "/")
                 )]
             )
@@ -322,7 +322,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            issues.append(FileSystemScanner.issue(for: error, at: candidate.url))
+            issues.append(ScanIssue(error: error, at: candidate.url))
             isDeletable = false
             explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
         }
@@ -407,7 +407,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
                 includingPropertiesForKeys: Array(keys),
                 options: [.skipsPackageDescendants],
                 errorHandler: { url, error in
-                    result.issues.append(FileSystemScanner.issue(for: error, at: url))
+                    result.issues.append(ScanIssue(error: error, at: url))
                     return true
                 }
             ) else {
