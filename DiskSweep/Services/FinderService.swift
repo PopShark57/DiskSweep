@@ -54,11 +54,6 @@ final class FinderService: NSObject, @preconcurrency QLPreviewPanelDataSource {
         return true
     }
 
-    func closeQuickLook() {
-        QLPreviewPanel.shared()?.orderOut(nil)
-        previewURLs = []
-    }
-
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
         previewURLs.count
     }

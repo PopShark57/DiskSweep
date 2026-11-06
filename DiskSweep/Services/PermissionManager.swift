@@ -57,13 +57,10 @@ final class PermissionManager {
     }
 
     func refreshStatus() {
-        var foundProtectedDirectory = false
         var encounteredPermissionDenial = false
 
         for directory in protectedDirectoryCandidates
         where fileManager.fileExists(atPath: directory.path) {
-            foundProtectedDirectory = true
-
             do {
                 // Reading the directory listing is a bounded, local probe. Names are discarded
                 // immediately and are never stored or transmitted.
@@ -82,13 +79,9 @@ final class PermissionManager {
             }
         }
 
-        if encounteredPermissionDenial {
-            fullDiskAccessStatus = .likelyRestricted
-        } else if foundProtectedDirectory {
-            fullDiskAccessStatus = .unknown
-        } else {
-            fullDiskAccessStatus = .unknown
-        }
+        // A readable listing returned early above. Denial suggests restriction; anything
+        // else, including finding no probe folder at all, can't establish the state.
+        fullDiskAccessStatus = encounteredPermissionDenial ? .likelyRestricted : .unknown
     }
 
     @discardableResult

@@ -53,12 +53,6 @@ struct ExclusionSettings: Codable, Hashable, Sendable {
         excludeTimeMachineBackups: true,
         excludePackageContents: true
     )
-
-    static let defaultExcludedDirectoryNames: Set<String> = [
-        ".git",
-        ".svn",
-        "node_modules"
-    ]
 }
 
 struct DeveloperSettings: Codable, Hashable, Sendable {
