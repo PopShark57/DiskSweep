@@ -142,10 +142,10 @@ struct SafetyValidator: Sendable {
         }
 
         guard let matchingRoot = roots.first(where: { root in
-            let requestedIsScoped = Self.isSameOrDescendant(requested, of: root.requested)
-                || Self.isSameOrDescendant(requested, of: root.resolved)
+            let requestedIsScoped = requested.isSameOrDescendant(of: root.requested)
+                || requested.isSameOrDescendant(of: root.resolved)
             return requestedIsScoped
-                && Self.isSameOrDescendant(resolved, of: root.resolved)
+                && resolved.isSameOrDescendant(of: root.resolved)
         }) else {
             throw SafetyValidationError.outsideApprovedRoots(resolved.path)
         }
@@ -215,7 +215,7 @@ struct SafetyValidator: Sendable {
             $0.standardizedFileURL.resolvingSymlinksInPath()
         }
         if normalizedExclusions.contains(where: {
-            Self.isSameOrDescendant(validated.deletionURL, of: $0)
+            validated.deletionURL.isSameOrDescendant(of: $0)
         }) {
             throw SafetyValidationError.excludedContent(validated.deletionURL.path)
         }
@@ -247,7 +247,7 @@ struct SafetyValidator: Sendable {
             if isExcludedByPolicy
                 || FileSystemSafetyPolicy.excludedExtensions.contains(pathExtension)
                 || normalizedExclusions.contains(where: {
-                    Self.isSameOrDescendant(standardized, of: $0)
+                    standardized.isSameOrDescendant(of: $0)
                 }) {
                 throw SafetyValidationError.excludedContent(standardized.path)
             }
@@ -343,7 +343,7 @@ struct SafetyValidator: Sendable {
         case .userLogs:
             return root == library.appendingPathComponent("Logs", isDirectory: true)
         case .temporaryFiles:
-            return Self.isSameOrDescendant(root, of: temporaryDirectory)
+            return root.isSameOrDescendant(of: temporaryDirectory)
         case .trash:
             return root == homeDirectory.appendingPathComponent(".Trash", isDirectory: true)
         case .downloads:
@@ -380,7 +380,7 @@ struct SafetyValidator: Sendable {
                 "Caches/Homebrew",
                 isDirectory: true
             )
-            return Self.isSameOrDescendant(root, of: standard)
+            return root.isSameOrDescendant(of: standard)
         case .developerToolCaches:
             return DeveloperToolCacheProvider.cacheDirectories.contains {
                 homeDirectory.appendingPathComponent($0.relativePath, isDirectory: true)
@@ -396,9 +396,9 @@ struct SafetyValidator: Sendable {
             // itself are already refused by canonicalApprovedRoot; the Library and Trash are
             // owned by other providers and are never project folders.
             let trash = homeDirectory.appendingPathComponent(".Trash", isDirectory: true)
-            return Self.isSameOrDescendant(root, of: homeDirectory)
-                && !Self.isSameOrDescendantCaseInsensitive(root, of: library)
-                && !Self.isSameOrDescendantCaseInsensitive(root, of: trash)
+            return root.isSameOrDescendant(of: homeDirectory)
+                && !root.isSameOrDescendantIgnoringCase(of: library)
+                && !root.isSameOrDescendantIgnoringCase(of: trash)
         }
     }
 
@@ -422,12 +422,12 @@ struct SafetyValidator: Sendable {
         )
         let components = root.pathComponents
 
-        if Self.isSameOrDescendant(root, of: containers),
+        if root.isSameOrDescendant(of: containers),
            let index = components.lastIndex(of: "Containers"),
            components.count == index + 5 {
             return Array(components.suffix(3)) == ["Data", "Library", "Caches"]
         }
-        if Self.isSameOrDescendant(root, of: groups),
+        if root.isSameOrDescendant(of: groups),
            let index = components.lastIndex(of: "Group Containers"),
            components.count == index + 4 {
             return Array(components.suffix(2)) == ["Library", "Caches"]
@@ -478,7 +478,7 @@ struct SafetyValidator: Sendable {
 
         let devices = coreSimulator.appendingPathComponent("Devices", isDirectory: true)
         let components = root.pathComponents
-        guard Self.isSameOrDescendant(root, of: devices),
+        guard root.isSameOrDescendant(of: devices),
               let index = components.lastIndex(of: "Devices"),
               components.count == index + 5 else {
             return false
@@ -487,8 +487,8 @@ struct SafetyValidator: Sendable {
     }
 
     private func isWithinUserScope(_ url: URL) -> Bool {
-        Self.isSameOrDescendant(url, of: temporaryDirectory)
-            || (Self.isSameOrDescendant(url, of: homeDirectory) && url != homeDirectory)
+        url.isSameOrDescendant(of: temporaryDirectory)
+            || (url.isSameOrDescendant(of: homeDirectory) && url != homeDirectory)
     }
 
     private func isProtectedApprovedRoot(_ url: URL, location: CleanupLocation?) -> Bool {
@@ -503,7 +503,7 @@ struct SafetyValidator: Sendable {
 
         let applicationSupport = homeDirectory
             .appendingPathComponent("Library/Application Support", isDirectory: true)
-        if Self.isSameOrDescendantCaseInsensitive(url, of: applicationSupport) {
+        if url.isSameOrDescendantIgnoringCase(of: applicationSupport) {
             return !Self.isRecognizedCacheRoot(url)
         }
 
@@ -511,8 +511,8 @@ struct SafetyValidator: Sendable {
             .appendingPathComponent("Library/Containers", isDirectory: true)
         let groupContainers = homeDirectory
             .appendingPathComponent("Library/Group Containers", isDirectory: true)
-        if Self.isSameOrDescendantCaseInsensitive(url, of: containers)
-            || Self.isSameOrDescendantCaseInsensitive(url, of: groupContainers) {
+        if url.isSameOrDescendantIgnoringCase(of: containers)
+            || url.isSameOrDescendantIgnoringCase(of: groupContainers) {
             return !Self.isRecognizedCacheRoot(url)
         }
 
@@ -528,14 +528,14 @@ struct SafetyValidator: Sendable {
         ].map { URL(fileURLWithPath: $0, isDirectory: true) }
 
         if protectedSystemPaths.contains(where: {
-            Self.isSameOrDescendantCaseInsensitive(url, of: $0)
+            url.isSameOrDescendantIgnoringCase(of: $0)
         }) {
             return true
         }
 
         let privateRoot = URL(fileURLWithPath: "/private", isDirectory: true)
-        if Self.isSameOrDescendantCaseInsensitive(url, of: privateRoot),
-           !Self.isSameOrDescendant(url, of: temporaryDirectory) {
+        if url.isSameOrDescendantIgnoringCase(of: privateRoot),
+           !url.isSameOrDescendant(of: temporaryDirectory) {
             return true
         }
 
@@ -548,7 +548,7 @@ struct SafetyValidator: Sendable {
         ].map { homeDirectory.appendingPathComponent($0, isDirectory: true) }
 
         if protectedHomePaths.contains(where: {
-            Self.isSameOrDescendantCaseInsensitive(url, of: $0)
+            url.isSameOrDescendantIgnoringCase(of: $0)
         }) {
             return true
         }
@@ -560,7 +560,7 @@ struct SafetyValidator: Sendable {
         }
 
         if additionalProtectedLocations.contains(where: {
-            Self.isSameOrDescendantCaseInsensitive(url, of: $0)
+            url.isSameOrDescendantIgnoringCase(of: $0)
         }) {
             return true
         }
@@ -587,25 +587,6 @@ struct SafetyValidator: Sendable {
             .replacingOccurrences(of: "\\", with: "/")
         return text.split(separator: "/", omittingEmptySubsequences: false)
             .contains("..")
-    }
-
-    private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
-    }
-
-    private static func isSameOrDescendantCaseInsensitive(
-        _ candidate: URL,
-        of root: URL
-    ) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return zip(candidateComponents, rootComponents).allSatisfy {
-            $0.caseInsensitiveCompare($1) == .orderedSame
-        }
     }
 
     static func captureIdentity(at url: URL) throws -> FileIdentity {
