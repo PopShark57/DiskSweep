@@ -153,11 +153,13 @@ actor CleanupEngine: CleanupPerforming {
                         location: item.location,
                         allowedRoots: authorization.allowedRoots
                     )
-                    try validator.validateDirectoryContents(
-                        validated,
-                        exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
-                        permittedNestedNames: permittedNestedNames
-                    )
+                    try Log.signposter.withIntervalSignpost("Validate contents") {
+                        try validator.validateDirectoryContents(
+                            validated,
+                            exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
+                            permittedNestedNames: permittedNestedNames
+                        )
+                    }
                     try Self.requireStillQualifies(validated, location: item.location)
                     validated = try validator.revalidate(
                         validated,

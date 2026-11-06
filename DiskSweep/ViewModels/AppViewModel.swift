@@ -209,6 +209,11 @@ final class AppViewModel {
                 let priorCompleted = completed
                 let totalProviders = scanProviders.count
 
+                let signpost = Log.signposter.beginInterval(
+                    "Provider scan",
+                    id: Log.signposter.makeSignpostID(),
+                    "\(provider.id, privacy: .public)"
+                )
                 let result = await provider.scan(context: makeScanContext()) { [weak self] update in
                     await self?.applyCleanupProgress(
                         update,
@@ -220,6 +225,7 @@ final class AppViewModel {
                     )
                 }
 
+                Log.signposter.endInterval("Provider scan", signpost)
                 // Every await is a point where this scan may have been cancelled or replaced.
                 guard generation == scanGeneration else { return }
                 if Task.isCancelled { break }
@@ -483,6 +489,12 @@ final class AppViewModel {
         let progress = analysisProgressHandler(generation: generation)
         analysisTask = Task { [weak self] in
             guard let self else { return }
+            let signpost = Log.signposter.beginInterval(
+                "Analysis",
+                id: Log.signposter.makeSignpostID(),
+                "\(activity.rawValue, privacy: .public)"
+            )
+            defer { Log.signposter.endInterval("Analysis", signpost) }
             do {
                 let publish = try await operation(makeScanContext(), progress)
                 guard generation == analysisGeneration else { return }

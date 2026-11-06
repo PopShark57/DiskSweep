@@ -11,6 +11,9 @@ enum Log {
     static let cleanup = Logger(subsystem: subsystem, category: "cleanup")
     static let persistence = Logger(subsystem: subsystem, category: "persistence")
     static let performance = Logger(subsystem: subsystem, category: "perf")
+    /// Intervals for Instruments' Points of Interest / os_signpost tracks: provider scans,
+    /// analyses and their stages, and pre-delete validation.
+    static let signposter = OSSignposter(logger: performance)
 
     /// A provider refused one of its approved roots before scanning it.
     static func rootRefused(_ root: URL, location: CleanupLocation, error: Error) {

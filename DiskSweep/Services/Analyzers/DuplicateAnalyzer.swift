@@ -107,6 +107,10 @@ struct DuplicateAnalyzer: Sendable {
         let chunkSize = readChunkByteCount
         let batchSize = progressBatchSize
         let worker = Task.detached(priority: .utility) {
+            let enumerationSignpost = Log.signposter.beginInterval(
+                "Duplicates enumerate",
+                id: Log.signposter.makeSignpostID()
+            )
             let enumeration = try await AnalyzerFileSystem.enumerateFiles(
                 roots: scanRoots,
                 minimumSize: effectiveMinimumSize,
@@ -118,6 +122,12 @@ struct DuplicateAnalyzer: Sendable {
                 progress: progress
             )
 
+            Log.signposter.endInterval("Duplicates enumerate", enumerationSignpost)
+            let confirmSignpost = Log.signposter.beginInterval(
+                "Duplicates confirm",
+                id: Log.signposter.makeSignpostID()
+            )
+            defer { Log.signposter.endInterval("Duplicates confirm", confirmSignpost) }
             try Task.checkCancellation()
             var issues = enumeration.issues
             var diagnostics = DuplicateScanDiagnostics()

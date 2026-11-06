@@ -14,7 +14,8 @@
 # point this script at a folder you care about.
 #
 # --large adds the performance fixture from Phase 5 of implementation_plan.md:
-# 100k small files in DerivedData, 20k files in Downloads, and 500 duplicate pairs.
+# 100k small files in DerivedData, 20k files in Downloads, 500 duplicate pairs, and 500
+# sandboxed-app containers.
 
 set -euo pipefail
 
@@ -139,6 +140,11 @@ if (( large )); then
   done
   mkdir -p Downloads/Bulk
   for f in $(seq 0 19999); do print -n "download $f" > "Downloads/Bulk/file-$f.txt"; done
+  # Many sandboxed-app containers, so computing Application Caches roots does real work.
+  for c in $(seq 0 499); do
+    mkdir -p "Library/Containers/com.example.perf$c/Data/Library/Caches"
+    print -n "c" > "Library/Containers/com.example.perf$c/Data/Library/Caches/blob"
+  done
   mkdir -p Media/Pairs
   for p in $(seq 0 499); do
     blob "Media/Pairs/pair-$p-a.bin" 1100 "pair$p"
