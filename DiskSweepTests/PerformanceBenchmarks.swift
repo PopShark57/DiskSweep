@@ -15,7 +15,7 @@ import XCTest
 final class PerformanceBenchmarks: XCTestCase {
     private var home: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         guard let path = ProcessInfo.processInfo.environment["DISKSWEEP_BENCHMARK_FIXTURE"],
               !path.isEmpty else {
             throw XCTSkip("Set DISKSWEEP_BENCHMARK_FIXTURE to run benchmarks.")

@@ -176,7 +176,6 @@ struct FileSystemScanner: Sendable {
                 lastURL = candidate
 
                 let standardized = candidate.standardizedFileURL
-                let resolved = standardized.resolvingSymlinksInPath()
                 let name = standardized.lastPathComponent
                 let pathExtension = standardized.pathExtension.lowercased()
 
@@ -184,10 +183,7 @@ struct FileSystemScanner: Sendable {
                     || options.excludedNames.contains(name.lowercased())
                     || options.excludedExtensions.contains(pathExtension)
                     || (options.skipCloudPlaceholders && pathExtension == "icloud")
-                    || exclusions.contains(where: {
-                        standardized.isSameOrDescendant(of: $0)
-                            || resolved.isSameOrDescendant(of: $0)
-                    }) {
+                    || Self.isExcluded(standardized, by: exclusions) {
                     excludedURLs.append(standardized)
                     enumerator.skipDescendants()
                     continue
@@ -195,7 +191,8 @@ struct FileSystemScanner: Sendable {
 
                 let values: URLResourceValues
                 do {
-                    values = try standardized.resourceValues(forKeys: resourceKeys)
+                    // The enumerator's own URL carries the prefetched values.
+                    values = try candidate.resourceValues(forKeys: resourceKeys)
                 } catch {
                     issues.append(ScanIssue(error: error, at: standardized))
                     continue
@@ -313,5 +310,15 @@ struct FileSystemScanner: Sendable {
         } onCancel: {
             worker.cancel()
         }
+    }
+
+    /// Whether an entry is inside an exclusion, compared both as enumerated and with symlinks
+    /// resolved. Resolving costs a filesystem call per path component, so it only happens when
+    /// there are exclusions and the enumerated path didn't already match.
+    private static func isExcluded(_ url: URL, by exclusions: [URL]) -> Bool {
+        guard !exclusions.isEmpty else { return false }
+        if exclusions.contains(where: { url.isSameOrDescendant(of: $0) }) { return true }
+        let resolved = url.resolvingSymlinksInPath()
+        return exclusions.contains { resolved.isSameOrDescendant(of: $0) }
     }
 }

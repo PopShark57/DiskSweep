@@ -344,6 +344,35 @@ final class SafetyScannerTests: XCTestCase {
         XCTAssertFalse(sized.excludedURLs.isEmpty, "A folder containing an exclusion must report it")
     }
 
+    /// 5.2: an exclusion named through a symlinked path still excludes the real folder, and
+    /// a symlink whose target is excluded is still reported as excluded content.
+    func testExclusionGivenThroughSymlinkStillExcludes() async throws {
+        try writeFile(relativePath: "Scan/Keep/secret.bin")
+        try writeFile(relativePath: "Scan/Other/visible.bin")
+        let linkToScan = root.appendingPathComponent("LinkToScan")
+        try FileManager.default.createSymbolicLink(
+            at: linkToScan,
+            withDestinationURL: root.appendingPathComponent("Scan")
+        )
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("Scan/Other/pointer"),
+            withDestinationURL: root.appendingPathComponent("Scan/Keep")
+        )
+        let exclusionViaLink = linkToScan.appendingPathComponent("Keep", isDirectory: true)
+
+        let sized = try await DirectorySizer().size(
+            of: root.appendingPathComponent("Scan"),
+            exclusions: [exclusionViaLink],
+            includeHiddenFiles: true,
+            skipPackages: false
+        )
+        XCTAssertEqual(sized.fileCount, 1, "Only visible.bin is counted")
+        XCTAssertEqual(
+            Set(sized.excludedURLs.map(\.lastPathComponent)),
+            ["Keep", "pointer"]
+        )
+    }
+
     @discardableResult
     private func writeFile(relativePath: String, byteCount: Int = 8) throws -> URL {
         let file = root.appendingPathComponent(relativePath)
