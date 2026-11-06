@@ -310,6 +310,52 @@ final class CleanupEngineTests: XCTestCase {
         XCTAssertEqual(category.fileCount, 2)
     }
 
+    /// 1.1 negative test: after a folder is removed, only its real descendants are skipped.
+    /// A sibling whose name extends the removed folder's name is still validated on its own,
+    /// so a changed sibling is refused and left in place.
+    func testRemovedFolderDoesNotCoverSiblingWithSharedNamePrefix() async throws {
+        let folder = root.appendingPathComponent("A", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("inner.cache"))
+        let siblingFolder = root.appendingPathComponent("AB", isDirectory: true)
+        try FileManager.default.createDirectory(at: siblingFolder, withIntermediateDirectories: true)
+        let sibling = siblingFolder.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: sibling)
+
+        let folderItem = CleanupItem(
+            providerID: "test-cache",
+            location: .temporaryFiles,
+            name: "A",
+            url: folder,
+            size: 1,
+            kind: .directory,
+            risk: .safe,
+            explanation: "test"
+        )
+        // The recorded size doesn't match the file, so validation must refuse it.
+        let siblingItem = CleanupItem(
+            providerID: "test-cache",
+            location: .temporaryFiles,
+            name: "keep.txt",
+            url: sibling,
+            size: 999,
+            kind: .file,
+            risk: .safe,
+            explanation: "test"
+        )
+
+        let result = await engine.clean(
+            [folderItem, siblingItem],
+            authorizations: [authorization],
+            disposition: .permanent
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sibling.path))
+        XCTAssertEqual(result.cleanedItems.map(\.name), ["A"])
+        XCTAssertEqual(result.failures.map(\.itemName), ["keep.txt"])
+    }
+
     private var engine: CleanupEngine {
         CleanupEngine(
             safetyValidator: SafetyValidator(

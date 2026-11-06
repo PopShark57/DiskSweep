@@ -82,7 +82,7 @@ actor CleanupEngine {
             }
 
             if removedDirectories.contains(where: {
-                Self.isStrictDescendant(item.url.standardizedFileURL, of: $0)
+                item.url.standardizedFileURL.isStrictDescendant(of: $0)
             }) {
                 continue
             }
@@ -287,13 +287,6 @@ actor CleanupEngine {
         return items.filter {
             paths.insert($0.url.standardizedFileURL.path).inserted
         }
-    }
-
-    private static func isStrictDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count > rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
     }
 
     private static func matchesScannedMetadata(
