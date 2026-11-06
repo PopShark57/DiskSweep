@@ -137,6 +137,33 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(model.analysisProgress)
     }
 
+    // MARK: - Provider overlaps (D7)
+
+    func testItemsContainingAnotherProvidersRootAreDropped() async {
+        let cachesRoot = URL(fileURLWithPath: "/nonexistent/disksweep-fake/Caches", isDirectory: true)
+        let model = makeModel(providers: [
+            FakeCleanupProvider(
+                id: "caches",
+                location: .userCaches,
+                allowedRoots: [cachesRoot],
+                items: [.init(name: "Browser", size: 10), .init(name: "Plain", size: 5)]
+            ),
+            FakeCleanupProvider(
+                id: "browser",
+                location: .browserCaches,
+                allowedRoots: [cachesRoot.appendingPathComponent("Browser/Profile", isDirectory: true)],
+                items: [.init(name: "cache.db", size: 7)]
+            )
+        ])
+
+        model.startCleanupScan()
+        await model.waitForScan()
+
+        let caches = model.categories.first { $0.location == .userCaches }
+        XCTAssertEqual(caches?.items.map(\.name), ["Plain"], "An item that contains another provider's root is dropped")
+        XCTAssertEqual(model.categories.first { $0.location == .browserCaches }?.items.map(\.name), ["cache.db"])
+    }
+
     // MARK: - Downloads bridge (D10)
 
     func testReadingSelectedDownloadsHasNoSideEffects() async throws {

@@ -191,9 +191,15 @@ final class AppViewModel {
             guard let self, generation == scanGeneration else { return }
 
             let enabledLocations = settings.effectiveScanLocations
-            let scanProviders = providers.filter {
+            let allProviders = providers
+            let scanProviders = allProviders.filter {
                 enabledLocations.contains($0.location) && $0.location != .downloads
             }
+            // Several providers list folders to find their roots. Do that once per scan, off
+            // the main actor. The plan only filters what's displayed; cleanup re-derives roots
+            // inside the engine, so a project folder removed in the meantime is still refused.
+            let plan = await Self.makeScanPlan(for: allProviders)
+            guard generation == scanGeneration else { return }
             cleanupScanProgress?.totalProviders = scanProviders.count
             categories = []
             selectedCleanupItemIDs = []
@@ -229,9 +235,10 @@ final class AppViewModel {
                 // Every await is a point where this scan may have been cancelled or replaced.
                 guard generation == scanGeneration else { return }
                 if Task.isCancelled { break }
-                let filteredItems = removeProviderOverlaps(
+                let filteredItems = Self.removeProviderOverlaps(
                     result.items,
-                    ownerProviderID: provider.id
+                    ownerProviderID: provider.id,
+                    plan: plan
                 )
                 let category = CleanupCategory(
                     location: result.location,
@@ -251,7 +258,7 @@ final class AppViewModel {
                 cleanupScanProgress = ScanProgress(
                     phase: .enumerating,
                     location: provider.location,
-                    currentPath: provider.allowedRoots.first?.path ?? "",
+                    currentPath: plan.roots(of: provider.id).first?.path ?? "",
                     filesAnalyzed: accumulatedFiles,
                     bytesFound: accumulatedBytes,
                     completedProviders: completed,
@@ -574,14 +581,39 @@ final class AppViewModel {
         }
     }
 
-    private func removeProviderOverlaps(
+    /// Each provider's roots, evaluated once per scan.
+    struct ScanPlan: Sendable {
+        let rootsByProvider: [String: [URL]]
+
+        func roots(of providerID: String) -> [URL] {
+            rootsByProvider[providerID] ?? []
+        }
+    }
+
+    nonisolated static func makeScanPlan(for providers: [any CleanupProvider]) async -> ScanPlan {
+        await Task.detached(priority: .utility) {
+            #if DEBUG
+            dispatchPrecondition(condition: .notOnQueue(.main))
+            #endif
+            var roots: [String: [URL]] = [:]
+            for provider in providers {
+                roots[provider.id, default: []]
+                    .append(contentsOf: provider.allowedRoots.map(\.standardizedFileURL))
+            }
+            return ScanPlan(rootsByProvider: roots)
+        }.value
+    }
+
+    /// Drops items that are another provider's root, or that contain one, so the same data is
+    /// never listed by two categories.
+    static func removeProviderOverlaps(
         _ items: [CleanupItem],
-        ownerProviderID: String
+        ownerProviderID: String,
+        plan: ScanPlan
     ) -> [CleanupItem] {
-        let otherRoots = providers
-            .filter { $0.id != ownerProviderID }
-            .flatMap(\.allowedRoots)
-            .map(\.standardizedFileURL)
+        let otherRoots = plan.rootsByProvider
+            .filter { $0.key != ownerProviderID }
+            .flatMap(\.value)
 
         return items.filter { item in
             let candidate = item.url.standardizedFileURL
