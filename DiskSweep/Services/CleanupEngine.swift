@@ -116,10 +116,7 @@ actor CleanupEngine: CleanupPerforming {
                 continue
             }
 
-            let itemDisposition = resolvedDisposition(
-                for: item,
-                requested: disposition
-            )
+            let itemDisposition = Self.disposition(for: item, requested: disposition)
             let permittedNestedNames = item.location.permittedNestedNames
             let scanSnapshot = snapshots.snapshot(
                 providerID: item.providerID,
@@ -236,7 +233,11 @@ actor CleanupEngine: CleanupPerforming {
         (try? await diskService.statistics())?.available ?? 0
     }
 
-    private func resolvedDisposition(
+    /// How an item is removed. The review sheet shows this same value, so what it says
+    /// matches what the engine does: Trash items are always deleted permanently; user files
+    /// and Trash-first developer folders follow the request and default to the Trash;
+    /// everything else, such as caches, is deleted permanently.
+    static func disposition(
         for item: CleanupItem,
         requested: CleanupDisposition?
     ) -> CleanupDisposition {

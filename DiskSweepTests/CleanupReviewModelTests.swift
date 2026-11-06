@@ -45,4 +45,38 @@ final class CleanupReviewModelTests: XCTestCase {
             )
         }
     }
+
+    /// Locks in the engine's disposition rule for every location; the review sheet's badges
+    /// use the same function.
+    func testEngineDispositionForEveryLocation() {
+        for location in CleanupLocation.allCases {
+            let item = item(location)
+            for requested in [nil, CleanupDisposition.trash, .permanent] {
+                let expected: CleanupDisposition
+                if location == .trash {
+                    expected = .permanent
+                } else if location.defaultsToTrash || location.risk == .userFiles {
+                    expected = requested ?? .trash
+                } else {
+                    expected = .permanent
+                }
+                XCTAssertEqual(
+                    CleanupEngine.disposition(for: item, requested: requested),
+                    expected,
+                    "\(location) requested \(String(describing: requested))"
+                )
+            }
+        }
+        // Spot checks that pin the policy itself, not just the formula above.
+        XCTAssertEqual(CleanupEngine.disposition(for: item(.userCaches), requested: .trash), .permanent)
+        XCTAssertEqual(CleanupEngine.disposition(for: item(.trash), requested: .trash), .permanent)
+        XCTAssertEqual(CleanupEngine.disposition(for: item(.downloads), requested: nil), .trash)
+        XCTAssertEqual(CleanupEngine.disposition(for: item(.projectArtifacts), requested: .permanent), .permanent)
+    }
+
+    func testGroupDispositionsFollowThePickerOnlyForTrashFirstGroups() {
+        XCTAssertEqual(CleanupReviewModel.dispositions(of: [item(.projectArtifacts)], requested: .permanent), [.permanent])
+        XCTAssertEqual(CleanupReviewModel.dispositions(of: [item(.projectArtifacts)], requested: .trash), [.trash])
+        XCTAssertEqual(CleanupReviewModel.dispositions(of: [item(.xcodeDerivedData)], requested: .trash), [.permanent])
+    }
 }
