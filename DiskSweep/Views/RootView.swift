@@ -13,6 +13,7 @@ struct RootView: View {
             sidebar
         } detail: {
             detail
+                .environment(\.inUseItemNames, model.inUseItemNames)
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(

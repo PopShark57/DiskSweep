@@ -39,6 +39,7 @@ struct SectionDisclosureButton: View {
 struct CleanupItemRow: View {
     let item: CleanupItem
     @Binding var isChecked: Bool
+    @Environment(\.inUseItemNames) private var inUseItemNames
 
     var body: some View {
         HStack(spacing: 12) {
@@ -56,8 +57,20 @@ struct CleanupItemRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(item.name)
+                        .lineLimit(1)
+                    if let app = inUseItemNames[item.id] {
+                        Text("In use")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.orange)
+                            .help("\(app) is running and may recreate this cache right away, so it isn't selected automatically.")
+                            .accessibilityLabel("In use by \(app)")
+                    }
+                }
                 Text(item.url.path(percentEncoded: false))
                     .font(.caption)
                     .foregroundStyle(.tertiary)

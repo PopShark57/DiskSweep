@@ -45,6 +45,9 @@ final class AppViewModel {
     var quickLookURL: URL?
     /// What the last Undo or Put Back did, shown where it was requested.
     var restoreSummary: String?
+    /// Cache items that appear to belong to a running app (item ID → app name). They're not
+    /// preselected and are marked "In use"; they can still be chosen.
+    var inUseItemNames: [UUID: String] = [:]
 
     let settings: SettingsStore
     let history: CleanupHistoryStore
@@ -58,6 +61,7 @@ final class AppViewModel {
     /// the scan recorded.
     @ObservationIgnored let snapshots: CleanupSnapshotRegistry
     @ObservationIgnored private let finderService: FinderService
+    @ObservationIgnored private let runningApps: @MainActor () -> [RunningApp]
     @ObservationIgnored private var cleanupScanTask: Task<Void, Never>?
     /// A cancelled scan that may still be finishing its current provider. The next scan waits
     /// for it, so the two never run providers at the same time.
@@ -92,7 +96,8 @@ final class AppViewModel {
         diskService: DiskService = DiskService(),
         snapshots: CleanupSnapshotRegistry = CleanupSnapshotRegistry(),
         cleanupEngine: (any CleanupPerforming)? = nil,
-        finderService: FinderService = .shared
+        finderService: FinderService = .shared,
+        runningApps: @escaping @MainActor () -> [RunningApp] = RunningAppMatcher.systemRunningApps
     ) {
         let home = homeDirectory.standardizedFileURL
         self.homeDirectory = home
@@ -107,6 +112,7 @@ final class AppViewModel {
             snapshots: snapshots
         )
         self.finderService = finderService
+        self.runningApps = runningApps
         self.standardProviders = standardProviders ?? StandardCleanupProviders.all(
             homeDirectory: home,
             temporaryDirectory: temporaryDirectory
@@ -220,6 +226,8 @@ final class AppViewModel {
             accumulatedScanFiles = 0
             accumulatedScanBytes = 0
             inFlightProgress = [:]
+            inUseItemNames = [:]
+            let running = runningApps()
             let totalProviders = scanProviders.count
             let context = makeScanContext()
 
@@ -261,7 +269,13 @@ final class AppViewModel {
                         group.cancelAll()
                         return
                     }
-                    publish(result, from: provider, plan: plan, totalProviders: totalProviders)
+                    publish(
+                        result,
+                        from: provider,
+                        plan: plan,
+                        totalProviders: totalProviders,
+                        runningApps: running
+                    )
                     startNext()
                     await refreshDiskStatistics()
                 }
@@ -639,7 +653,8 @@ final class AppViewModel {
         _ result: ProviderScanResult,
         from provider: any CleanupProvider,
         plan: ScanPlan,
-        totalProviders: Int
+        totalProviders: Int,
+        runningApps: [RunningApp]
     ) {
         inFlightProgress[provider.id] = nil
         let filteredItems = Self.removeProviderOverlaps(
@@ -656,7 +671,10 @@ final class AppViewModel {
         categories.append(category)
         categories.sort { locationOrder($0.location) < locationOrder($1.location) }
 
-        for item in filteredItems where item.isSelectedByDefault && item.isDeletable {
+        let inUse = RunningAppMatcher.inUseItems(in: [category], running: runningApps)
+        inUseItemNames.merge(inUse) { first, _ in first }
+        for item in filteredItems
+        where item.isSelectedByDefault && item.isDeletable && inUse[item.id] == nil {
             selectedCleanupItemIDs.insert(item.id)
         }
         accumulatedScanFiles += category.fileCount

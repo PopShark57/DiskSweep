@@ -364,6 +364,51 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(calls, [[visible.id]])
     }
 
+    // MARK: - Running-app awareness (F5)
+
+    func testCachesOfRunningAppsAreMarkedAndNotPreselected() async {
+        let model = makeModel(
+            providers: [
+                FakeCleanupProvider(
+                    id: "caches",
+                    location: .userCaches,
+                    items: [.init(name: "com.example.Running", size: 10), .init(name: "com.example.Idle", size: 5)]
+                )
+            ],
+            runningApps: [RunningApp(bundleID: "com.example.Running", name: "Running")]
+        )
+
+        model.startCleanupScan()
+        await model.waitForScan()
+
+        let items = model.categories.first?.items ?? []
+        let running = items.first { $0.name == "com.example.Running" }!
+        let idle = items.first { $0.name == "com.example.Idle" }!
+        XCTAssertEqual(model.inUseItemNames[running.id], "Running")
+        XCTAssertNil(model.inUseItemNames[idle.id])
+        XCTAssertEqual(model.selectedCleanupItemIDs, [idle.id])
+    }
+
+    func testMatcherUsesBundleIDsEverywhereAndAppNamesOnlyForAppCaches() {
+        let running = [RunningApp(bundleID: "com.tinyspeck.slackmacgap", name: "Slack")]
+        func category(_ location: CleanupLocation, _ path: String) -> CleanupCategory {
+            CleanupCategory(
+                location: location,
+                items: [CleanupItem(providerID: "p", location: location, name: "x", url: URL(fileURLWithPath: path),
+                                    size: 1, kind: .directory, risk: .safe, explanation: "")],
+                issues: [],
+                scannedAt: Date()
+            )
+        }
+        let electron = category(.electronAppCaches, "/Users/u/Library/Application Support/Slack/Cache")
+        let containers = category(.applicationCaches, "/Users/u/Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Caches/x")
+        let unrelated = category(.userCaches, "/Users/u/Library/Caches/Slack")
+        let derived = category(.xcodeDerivedData, "/Users/u/Library/Developer/Xcode/DerivedData/com.tinyspeck.slackmacgap")
+
+        let matches = RunningAppMatcher.inUseItems(in: [electron, containers, unrelated, derived], running: running)
+        XCTAssertEqual(Set(matches.keys), [electron.items[0].id, containers.items[0].id])
+    }
+
     // MARK: - Quick Look (C3)
 
     func testQuickLookIsDrivenByTheViewModel() {
@@ -380,6 +425,7 @@ final class AppViewModelTests: XCTestCase {
     func makeModel(
         providers: [any CleanupProvider],
         engine: (any CleanupPerforming)? = nil,
+        runningApps: [RunningApp] = [],
         configure: (SettingsStore) -> Void = { _ in }
     ) -> AppViewModel {
         let settings = SettingsStore(userDefaults: UserDefaults(suiteName: defaultsSuiteName)!)
@@ -401,7 +447,8 @@ final class AppViewModelTests: XCTestCase {
             cleanupEngine: engine ?? CleanupEngine(
                 safetyValidator: SafetyValidator(homeDirectory: home, temporaryDirectory: sandbox),
                 snapshots: snapshots
-            )
+            ),
+            runningApps: { runningApps }
         )
     }
 }
