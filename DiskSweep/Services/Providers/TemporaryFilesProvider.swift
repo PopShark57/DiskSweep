@@ -155,6 +155,9 @@ struct TemporaryFilesProvider: CleanupProvider {
                 )]
             )
         } catch {
+            if error is SafetyValidationError {
+                Log.rootRefused(temporaryDirectory, location: location, error: error)
+            }
             context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,

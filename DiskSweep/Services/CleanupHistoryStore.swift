@@ -111,6 +111,9 @@ final class CleanupHistoryStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Cleanup history could not be read: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Cleanup history could not be read: \(error.localizedDescription, privacy: .private)"
+            )
             throw error
         }
     }
@@ -150,6 +153,9 @@ final class CleanupHistoryStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Cleanup history could not be saved: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Cleanup history could not be saved: \(error.localizedDescription, privacy: .private)"
+            )
             throw error
         }
     }

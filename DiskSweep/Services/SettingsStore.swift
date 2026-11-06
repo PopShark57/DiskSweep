@@ -202,6 +202,9 @@ final class SettingsStore {
             } catch {
                 loaded = .defaults
                 lastPersistenceError = "Settings could not be read and defaults were restored: \(error.localizedDescription)"
+                Log.persistence.error(
+                    "Settings could not be decoded: \(error.localizedDescription, privacy: .public)"
+                )
             }
         } else {
             loaded = .defaults
@@ -312,6 +315,9 @@ final class SettingsStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Settings could not be reloaded: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Settings could not be reloaded: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -344,6 +350,9 @@ final class SettingsStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Settings could not be saved: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Settings could not be saved: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 }

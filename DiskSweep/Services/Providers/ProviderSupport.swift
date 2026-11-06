@@ -24,6 +24,7 @@ enum ProviderSupport {
                 _ = try rootValidator.preflightApprovedRoot(root, location: location)
                 return root
             } catch {
+                Log.rootRefused(root, location: location, error: error)
                 issues.append(ScanIssue(
                     kind: .inaccessible,
                     path: root.path,
@@ -264,6 +265,7 @@ enum ProviderSupport {
                 do {
                     _ = try validator.preflightApprovedRoot(root, location: location)
                 } catch {
+                    Log.rootRefused(root, location: location, error: error)
                     issues.append(ScanIssue(
                         kind: .inaccessible,
                         path: root.path,

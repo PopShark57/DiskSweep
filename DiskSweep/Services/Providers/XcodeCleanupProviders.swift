@@ -66,6 +66,7 @@ struct XcodeArchivesProvider: CleanupProvider {
         do {
             _ = try validator.preflightApprovedRoot(root, location: location)
         } catch {
+            Log.rootRefused(root, location: location, error: error)
             issues.append(ScanIssue(
                 kind: .inaccessible,
                 path: root.path,

@@ -91,29 +91,17 @@ actor CleanupEngine {
             }
 
             guard item.isDeletable else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "This item is informational and is not marked as deletable."
-                ))
+                failures.append(Self.failure(for: item, reason: "This item is informational and is not marked as deletable."))
                 continue
             }
 
             guard let authorization = authorizationMap[item.providerID] else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The cleanup provider did not supply an allowlisted root."
-                ))
+                failures.append(Self.failure(for: item, reason: "The cleanup provider did not supply an allowlisted root."))
                 continue
             }
 
             guard authorization.location == item.location else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The item does not match its cleanup provider's category."
-                ))
+                failures.append(Self.failure(for: item, reason: "The item does not match its cleanup provider's category."))
                 continue
             }
 
@@ -127,11 +115,7 @@ actor CleanupEngine {
                 itemID: item.id
             )
             if authorization.requiresSnapshot, scanSnapshot == nil {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The scan-time file identity is unavailable. Rescan before cleaning this item."
-                ))
+                failures.append(Self.failure(for: item, reason: "The scan-time file identity is unavailable. Rescan before cleaning this item."))
                 continue
             }
 
@@ -210,11 +194,7 @@ actor CleanupEngine {
                 )
                 break
             } catch {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: error.localizedDescription
-                ))
+                failures.append(Self.failure(for: item, reason: error.localizedDescription))
             }
             snapshots.remove(
                 providerID: item.providerID,
@@ -223,6 +203,9 @@ actor CleanupEngine {
         }
 
         let availableAfter = await availableCapacity()
+        Log.cleanup.info(
+            "Cleanup finished: \(cleaned.count, privacy: .public) cleaned, \(failures.count, privacy: .public) not cleaned"
+        )
         return CleanupResult(
             startedAt: startedAt,
             finishedAt: Date(),
@@ -231,6 +214,11 @@ actor CleanupEngine {
             cleanedItems: cleaned,
             failures: failures
         )
+    }
+
+    private static func failure(for item: CleanupItem, reason: String) -> CleanupFailure {
+        Log.cleanupRefused(item, reason: reason)
+        return CleanupFailure(itemName: item.name, path: item.url.path, reason: reason)
     }
 
     private func availableCapacity() async -> Int64 {

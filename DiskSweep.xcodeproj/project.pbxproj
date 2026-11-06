@@ -60,6 +60,7 @@
 		A892DFA586C4AF9105B9281C /* StandardCleanupProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6097F9066D5D2FA90F013FB2 /* StandardCleanupProviders.swift */; };
 		A98846C2445CF1FF7F1FA376 /* ProjectArtifactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4AB8EA5C6B2BBA1FA9F1CF /* ProjectArtifactsProvider.swift */; };
 		ADE29FD908F4E6F038F7C8C5 /* SafetyValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3144E9DFDA8FA6F504712760 /* SafetyValidator.swift */; };
+		ADF83CA20D5663CDF500DAB4 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511AC32EA69BCF42B995C1AB /* Log.swift */; };
 		B2D9BC3F4F54122E84F0817D /* TemporaryFilesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CBA446A10D2FDA1432341B2 /* TemporaryFilesProvider.swift */; };
 		B3A507E1F4BFCB3DDC863040 /* TrashCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14AEF53CFE0A266E3DB3BF1 /* TrashCleanupView.swift */; };
 		B84C916DB08B3D963ADC04EA /* CleanupCategoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3129452FE7B4EEDDC0F006 /* CleanupCategoryCard.swift */; };
@@ -126,6 +127,7 @@
 		45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyValidatorTests.swift; sourceTree = "<group>"; };
 		4A25474D18D1307261730E5A /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		4D4AB8EA5C6B2BBA1FA9F1CF /* ProjectArtifactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProvider.swift; sourceTree = "<group>"; };
+		511AC32EA69BCF42B995C1AB /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		519E735A8152DC3D6D6FF6AE /* HomebrewCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomebrewCacheProvider.swift; sourceTree = "<group>"; };
 		52EFE12524FCC5B942F75B48 /* ScanIssueMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanIssueMappingTests.swift; sourceTree = "<group>"; };
 		573B722D5DE8A5FA7CDE20E0 /* ScanProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanProgressView.swift; sourceTree = "<group>"; };
@@ -238,6 +240,7 @@
 				85BA706EDCECF32CC2CD6A90 /* FileSizeFormatter.swift */,
 				33D4212B28E8E230EB93F36A /* FileSystemScanner.swift */,
 				B1A50F7AA08BAC5F28C0E4DC /* FinderService.swift */,
+				511AC32EA69BCF42B995C1AB /* Log.swift */,
 				C75823D2C3CC63D99A6252A6 /* PermissionManager.swift */,
 				3144E9DFDA8FA6F504712760 /* SafetyValidator.swift */,
 				7017E38FB8324CFE93D16DA6 /* SettingsStore.swift */,
@@ -529,6 +532,7 @@
 				635465BD9BF9E7E418E146CD /* LargeFilesView.swift in Sources */,
 				BC07A7188BF5ECD2598C7B29 /* LargeFolderAnalyzer.swift in Sources */,
 				FE4BCAA65BD1BB72780D8C37 /* LargeFoldersView.swift in Sources */,
+				ADF83CA20D5663CDF500DAB4 /* Log.swift in Sources */,
 				F0434DC74C79C203145C433F /* LogProvider.swift in Sources */,
 				016CD8AA1765888A8C307679 /* OverviewView.swift in Sources */,
 				A61182E7E88170019015C3FA /* PermissionManager.swift in Sources */,
