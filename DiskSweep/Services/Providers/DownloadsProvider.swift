@@ -47,7 +47,9 @@ struct DownloadsProvider: CleanupProvider {
             return nil
         }
 
+        // The file's own ID, so bridging the same file again reuses the same registry key.
         let item = CleanupItem(
+            id: file.id,
             providerID: id,
             location: location,
             name: file.name,

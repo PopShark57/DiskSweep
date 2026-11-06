@@ -137,6 +137,32 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertNil(model.analysisProgress)
     }
 
+    // MARK: - Downloads bridge (D10)
+
+    func testReadingSelectedDownloadsHasNoSideEffects() async throws {
+        let home = sandbox.appendingPathComponent("Home", isDirectory: true)
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        for name in ["a.dmg", "b.zip", "c.pkg"] {
+            try Data(repeating: 1, count: 64).write(to: downloads.appendingPathComponent(name))
+        }
+        let model = makeModel(providers: [DownloadsProvider(homeDirectory: home)]) { settings in
+            settings.general.showHiddenFiles = true
+        }
+
+        model.startDownloadsAnalysis()
+        await model.waitForAnalysis()
+        let analysis = try XCTUnwrap(model.downloadsAnalysis)
+        XCTAssertEqual(analysis.allFiles.count, 3)
+        model.selectedDownloadFileIDs = Set(analysis.allFiles.map(\.id))
+
+        let first = model.selectedCleanupItems.map(\.id)
+        for _ in 0..<100 { _ = model.selectedCleanupItems }
+        XCTAssertEqual(Set(model.selectedCleanupItems.map(\.id)), Set(first))
+        XCTAssertEqual(Set(first), Set(analysis.allFiles.map(\.id)), "Items reuse the file IDs")
+        XCTAssertEqual(model.snapshots.count(providerID: DownloadsProvider.providerID), 3)
+    }
+
     // MARK: - Helpers
 
     func makeModel(

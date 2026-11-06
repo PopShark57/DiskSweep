@@ -22,7 +22,9 @@ final class AppViewModel {
     var showsCleanupReview = false
     var cleanupResult: CleanupResult?
 
-    var downloadsAnalysis: DownloadsAnalysis?
+    var downloadsAnalysis: DownloadsAnalysis? {
+        didSet { rebuildDownloadCleanupItems() }
+    }
     var selectedDownloadFileIDs: Set<UUID> = []
     var largeFiles: [FileItem] = []
     var largeFileThreshold: Int64 = LargeFileAnalyzer.defaultThreshold
@@ -59,6 +61,9 @@ final class AppViewModel {
     @ObservationIgnored private var analysisGeneration = 0
     @ObservationIgnored private var cleanupTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+    /// Cleanup items for the current Downloads analysis, keyed by file ID. Built once per
+    /// analysis, so reading the selection never records new registry snapshots.
+    @ObservationIgnored private var downloadCleanupItems: [UUID: CleanupItem] = [:]
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -115,15 +120,10 @@ final class AppViewModel {
             .flatMap(\.items)
             .filter { selectedCleanupItemIDs.contains($0.id) }
 
-        guard let downloadsAnalysis,
-              let provider = providers.first(where: { $0.id == DownloadsProvider.providerID })
-                as? DownloadsProvider else {
-            return categoryItems
-        }
-
+        guard let downloadsAnalysis else { return categoryItems }
         let downloadItems = downloadsAnalysis.allFiles
             .filter { selectedDownloadFileIDs.contains($0.id) }
-            .compactMap { provider.cleanupItem(for: $0, registry: snapshots) }
+            .compactMap { downloadCleanupItems[$0.id] }
         return categoryItems + downloadItems
     }
 
@@ -534,6 +534,21 @@ final class AppViewModel {
             let candidate = item.url.standardizedFileURL
             return !otherRoots.contains { root in
                 candidate == root || root.isStrictDescendant(of: candidate)
+            }
+        }
+    }
+
+    private func rebuildDownloadCleanupItems() {
+        snapshots.replace(providerID: DownloadsProvider.providerID, snapshots: [:])
+        downloadCleanupItems = [:]
+        guard let downloadsAnalysis,
+              let provider = providers.first(where: { $0.id == DownloadsProvider.providerID })
+                as? DownloadsProvider else {
+            return
+        }
+        for file in downloadsAnalysis.allFiles {
+            if let item = provider.cleanupItem(for: file, registry: snapshots) {
+                downloadCleanupItems[file.id] = item
             }
         }
     }
