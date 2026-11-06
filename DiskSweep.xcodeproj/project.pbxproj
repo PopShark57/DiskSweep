@@ -26,6 +26,7 @@
 		3FE19F365066BD1F07AECFA2 /* CleanupRisk.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4F81307FF49CC726E3E71F /* CleanupRisk.swift */; };
 		410E307B817D270FE07FDA38 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7017E38FB8324CFE93D16DA6 /* SettingsStore.swift */; };
 		470BEA4EBFE3919726C52433 /* CleanupResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CB1157DB5CE2AEE101E64E /* CleanupResult.swift */; };
+		481AD0D0D5D345E8825E60E6 /* DebugLaunchEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E855DDFF0B5BF619C694E13 /* DebugLaunchEnvironment.swift */; };
 		528C4578D39DFA14675C928B /* DownloadsAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B19ACCA9D57A84DC07D96D4 /* DownloadsAnalyzer.swift */; };
 		5668248F5256856FB4AA064D /* StorageVisualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF336B45D969C51D879F8A0A /* StorageVisualization.swift */; };
 		57F32D4A28198CEDBD60DEB1 /* UserCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66A6A9B6B242F96EA9FC5716 /* UserCacheProvider.swift */; };
@@ -139,6 +140,7 @@
 		7EADEE607DF552D5F2DE9B1B /* ProjectArtifactsProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectArtifactsProviderTests.swift; sourceTree = "<group>"; };
 		855422381EB6E4FA445F24C1 /* CleanupHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupHistoryStore.swift; sourceTree = "<group>"; };
 		85BA706EDCECF32CC2CD6A90 /* FileSizeFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSizeFormatter.swift; sourceTree = "<group>"; };
+		8E855DDFF0B5BF619C694E13 /* DebugLaunchEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunchEnvironment.swift; sourceTree = "<group>"; };
 		901A2006E7791D300F8FB75C /* DuplicatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicatesView.swift; sourceTree = "<group>"; };
 		93B2D4CD1F6B319DA8B25749 /* CleanupProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupProvider.swift; sourceTree = "<group>"; };
 		94BA7BA27F37755DFA41BF27 /* LogProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogProvider.swift; sourceTree = "<group>"; };
@@ -252,6 +254,7 @@
 		78FAF9FBB4CC7157ACDC2D64 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				8E855DDFF0B5BF619C694E13 /* DebugLaunchEnvironment.swift */,
 				1BCAF8DC6DFBA498336C28F8 /* DiskSweepApp.swift */,
 				74A0A4ED0BDF4BDC9AC011EA /* DiskSweepCommands.swift */,
 			);
@@ -489,6 +492,7 @@
 				7DBFBC95EAA4325D1BC0BC9F /* CleanupReviewView.swift in Sources */,
 				3FE19F365066BD1F07AECFA2 /* CleanupRisk.swift in Sources */,
 				9008F442AA78BE767F01EAB4 /* CleanupSnapshotRegistry.swift in Sources */,
+				481AD0D0D5D345E8825E60E6 /* DebugLaunchEnvironment.swift in Sources */,
 				CE84FD5C51F8AB49BBDC1011 /* DesignSystem.swift in Sources */,
 				C995D0747B1DBB12E4174B7C /* DeveloperToolCacheProvider.swift in Sources */,
 				DC0D2C087D99850E3CCDFD66 /* DirectorySizer.swift in Sources */,

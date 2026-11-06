@@ -201,6 +201,16 @@ The project build-artifact feature and its tests were added after this verificat
 
 On August 17, 2026, the generated project was built with the macOS 15 deployment target using Swift 6 and the current Xcode toolchain. The full Xcode test run completed **61 tests with 0 failures**. The Debug application was then launched and visually inspected in dark appearance; navigation, settings, live scan progress, cancellation, partial results, and the final cleanup-review sheet were exercised without approving a filesystem mutation.
 
+### Manual QA with a fixture home
+
+Never click Clean in a build that points at your real home folder. Debug builds accept a fake home instead:
+
+```bash
+scripts/make-fixture-home.sh
+```
+
+The script rebuilds `$(getconf DARWIN_USER_TEMP_DIR)DiskSweepFixtureHome` with DerivedData that contains a Swift package checkout, Poetry caches and virtual environments, Downloads with a disk image, an app bundle, and a sparse bundle, a `.utm` virtual machine bundle, duplicates and hard links, and a superseded JetBrains version. Add `--large` for the performance fixture (100k DerivedData files, 20k Downloads files, 500 duplicate pairs). Then launch the Debug build with the launch argument `-DiskSweepHomeOverride <path>` (Scheme > Run > Arguments). Providers, analyzers, the safety validator, settings (a separate defaults suite), and history (inside the fixture) all use the fixture. The fixture must stay inside the per-user temporary directory, because the safety validator protects the rest of `/private`. Release builds don't contain this code.
+
 ### Regenerate the Xcode project
 
 `project.yml` is the declarative project source. If files or target settings change, install XcodeGen and regenerate from the repository root:

@@ -234,7 +234,11 @@ struct RootView: View {
             HistoryView(entries: model.history.entries)
 
         case .settings:
-            SettingsView(settings: model.settings, permissions: model.permissions)
+            SettingsView(
+                settings: model.settings,
+                permissions: model.permissions,
+                homeDirectory: model.homeDirectory
+            )
         }
     }
 }

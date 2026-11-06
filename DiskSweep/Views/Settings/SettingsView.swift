@@ -4,6 +4,9 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Bindable var settings: SettingsStore
     @Bindable var permissions: PermissionManager
+    /// The home folder project folders are checked against. Debug builds can override it
+    /// with a fixture home; see `DebugLaunchEnvironment`.
+    var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
 
     @State private var selectedTab: SettingsTab = .general
     @State private var folderPickerPurpose: FolderPickerPurpose?
@@ -295,7 +298,7 @@ struct SettingsView: View {
                                 .buttonStyle(.borderless)
                                 .accessibilityLabel("Remove \(url.lastPathComponent) from project folders")
                             }
-                            if let reason = ProjectArtifactsProvider.refusalReason(for: url) {
+                            if let reason = ProjectArtifactsProvider.refusalReason(for: url, homeDirectory: homeDirectory) {
                                 Label(reason, systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.orange)

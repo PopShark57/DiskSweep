@@ -39,7 +39,7 @@ final class AppViewModel {
     let history: CleanupHistoryStore
     let permissions: PermissionManager
 
-    @ObservationIgnored private let homeDirectory: URL
+    @ObservationIgnored let homeDirectory: URL
     @ObservationIgnored private let standardProviders: [any CleanupProvider]
     @ObservationIgnored private let diskService: DiskService
     @ObservationIgnored private let cleanupEngine: CleanupEngine
@@ -51,6 +51,7 @@ final class AppViewModel {
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory,
         settings: SettingsStore = SettingsStore(),
         history: CleanupHistoryStore = CleanupHistoryStore(),
         permissions: PermissionManager = PermissionManager(),
@@ -66,7 +67,10 @@ final class AppViewModel {
         self.diskService = diskService
         self.cleanupEngine = cleanupEngine
         self.finderService = finderService
-        standardProviders = StandardCleanupProviders.all(homeDirectory: home)
+        standardProviders = StandardCleanupProviders.all(
+            homeDirectory: home,
+            temporaryDirectory: temporaryDirectory
+        )
     }
 
     /// The fixed cleanup locations plus the project folders currently chosen in Settings.

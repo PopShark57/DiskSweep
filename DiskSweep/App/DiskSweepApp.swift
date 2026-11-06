@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct DiskSweepApp: App {
-    @State private var model = AppViewModel()
+    @State private var model = Self.makeModel()
 
     var body: some Scene {
         WindowGroup {
@@ -15,8 +15,22 @@ struct DiskSweepApp: App {
         }
 
         Settings {
-            SettingsView(settings: model.settings, permissions: model.permissions)
-                .frame(width: 760, height: 560)
+            SettingsView(
+                settings: model.settings,
+                permissions: model.permissions,
+                homeDirectory: model.homeDirectory
+            )
+            .frame(width: 760, height: 560)
         }
+    }
+
+    @MainActor
+    private static func makeModel() -> AppViewModel {
+        #if DEBUG
+        if let home = DebugLaunchEnvironment.homeOverride() {
+            return DebugLaunchEnvironment.makeFixtureModel(home: home)
+        }
+        #endif
+        return AppViewModel()
     }
 }
