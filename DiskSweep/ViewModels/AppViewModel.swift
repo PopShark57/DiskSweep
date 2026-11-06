@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+enum SimulatorCheck: Equatable, Sendable {
+    case notChecked
+    case checking
+    case found([UnavailableSimulator])
+    case deleting
+    case failed(String)
+}
+
 enum AnalysisActivity: String, Sendable {
     case downloads
     case largeFiles
@@ -48,6 +56,7 @@ final class AppViewModel {
     /// Cache items that appear to belong to a running app (item ID → app name). They're not
     /// preselected and are marked "In use"; they can still be chosen.
     var inUseItemNames: [UUID: String] = [:]
+    var simulatorCheck: SimulatorCheck = .notChecked
 
     let settings: SettingsStore
     let history: CleanupHistoryStore
@@ -62,6 +71,7 @@ final class AppViewModel {
     @ObservationIgnored let snapshots: CleanupSnapshotRegistry
     @ObservationIgnored private let finderService: FinderService
     @ObservationIgnored private let runningApps: @MainActor () -> [RunningApp]
+    @ObservationIgnored private let simulatorService: SimulatorService
     @ObservationIgnored private var cleanupScanTask: Task<Void, Never>?
     /// A cancelled scan that may still be finishing its current provider. The next scan waits
     /// for it, so the two never run providers at the same time.
@@ -99,7 +109,8 @@ final class AppViewModel {
         snapshots: CleanupSnapshotRegistry = CleanupSnapshotRegistry(),
         cleanupEngine: (any CleanupPerforming)? = nil,
         finderService: FinderService = .shared,
-        runningApps: @escaping @MainActor () -> [RunningApp] = RunningAppMatcher.systemRunningApps
+        runningApps: @escaping @MainActor () -> [RunningApp] = RunningAppMatcher.systemRunningApps,
+        simulatorService: SimulatorService = SimulatorService()
     ) {
         let home = homeDirectory.standardizedFileURL
         self.homeDirectory = home
@@ -115,6 +126,7 @@ final class AppViewModel {
         )
         self.finderService = finderService
         self.runningApps = runningApps
+        self.simulatorService = simulatorService
         self.standardProviders = standardProviders ?? StandardCleanupProviders.all(
             homeDirectory: home,
             temporaryDirectory: temporaryDirectory
@@ -497,6 +509,45 @@ final class AppViewModel {
     }
 
     func clearError() { errorMessage = nil }
+
+    // MARK: - Unavailable simulators
+
+    func checkUnavailableSimulators() {
+        guard simulatorCheck != .checking, simulatorCheck != .deleting else { return }
+        simulatorCheck = .checking
+        let service = simulatorService
+        Task { [weak self] in
+            do {
+                let devices = try await service.unavailableSimulators()
+                self?.simulatorCheck = .found(devices)
+            } catch {
+                self?.simulatorCheck = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Runs `xcrun simctl delete unavailable`, then checks again.
+    func deleteUnavailableSimulators() {
+        guard case let .found(devices) = simulatorCheck, !devices.isEmpty else { return }
+        simulatorCheck = .deleting
+        let service = simulatorService
+        Task { [weak self] in
+            do {
+                try await service.deleteUnavailableSimulators()
+                self?.simulatorCheck = .notChecked
+                self?.checkUnavailableSimulators()
+            } catch {
+                self?.simulatorCheck = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Waits until a simulator check or deletion settles. Used by tests.
+    func waitForSimulatorCheck() async {
+        while simulatorCheck == .checking || simulatorCheck == .deleting {
+            await Task.yield()
+        }
+    }
 
     // MARK: - Undo and Put Back
 

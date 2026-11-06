@@ -11,6 +11,8 @@ struct CleanupListView: View {
     let reviewCleanup: () -> Void
     let quickLook: (URL) -> Void
     let reveal: (URL) -> Void
+    /// Extra content under the header, such as the unavailable-simulators panel.
+    var accessory: AnyView?
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
@@ -28,6 +30,12 @@ struct CleanupListView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 28)
                 .padding(.bottom, 16)
+
+            if let accessory {
+                accessory
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 12)
+            }
 
             if categories.isEmpty && !isScanning {
                 EmptyAnalysisView(

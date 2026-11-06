@@ -27,6 +27,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 ### Cleanup discovery and analysis
 
 - Cleanup providers for explicit user-scoped roots: user and application caches, logs, current-user temporary files, Trash, browser caches, Electron app caches, Downloads, Xcode DerivedData and archives, simulator caches, Xcode Device Support, Swift Package Manager caches, Homebrew downloads, and package manager caches.
+- Unavailable simulators: Developer Files can check for simulators whose runtime is no longer installed (`xcrun simctl list devices unavailable -j`) and, after confirmation, remove them with `xcrun simctl delete unavailable`. DiskSweep runs the tool with fixed arguments and a timeout, never through a shell, and never deletes simulator paths itself.
 - Xcode Device Support beta builds that a release build of the same OS version has replaced are preselected; other Device Support folders still require review.
 - Running-app awareness: cache items that appear to belong to an app that's running (matched by bundle ID, or by app name for browser and Electron caches) aren't preselected and are marked **In use**, because the app may recreate them right away. This only warns; you can still select them.
 - Electron and Chromium-based app caches (for example Visual Studio Code, Slack, Discord, Teams) in `~/Library/Application Support/<App>`. An app folder is only recognized when Chromium's `Local State` file is present, and only Chromium cache folders such as `Cache`, `Code Cache`, `GPUCache`, and shader caches are offered—never Local Storage, IndexedDB, cookies, or Service Worker data.
@@ -250,7 +251,7 @@ Review the generated project diff before committing it. For ordinary building, t
 
 ## Current limitations
 
-- Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped, and simulator cleanup is limited to cache directories rather than simulator app data.
+- Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped. Simulator cleanup covers cache directories and, through `simctl`, simulators with no installed runtime; old runtimes themselves aren't offered.
 - Electron app caches are only recognized directly inside `~/Library/Application Support`, not in vendor subfolders such as `Google/Chrome Canary`. Android system images and virtual devices are only recognized in their default locations; a custom `ANDROID_HOME` or `ANDROID_AVD_HOME` is not read.
 - Project folders inside protected locations, such as `~/Documents`, cannot be used for project build-artifact cleanup. Artifacts without a marker, such as Gradle `build/` folders or Python `dist/` folders, are not recognized. The project walk stops at a depth of 12 folders.
 - Full Disk Access detection is necessarily heuristic, and macOS permissions may still hide individual locations.

@@ -27,6 +27,7 @@
 		22316DC023E5BA2F6D819DE0 /* CleanupHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B039C3340E49644FC10AAE4 /* CleanupHistoryStoreTests.swift */; };
 		24D5FF864950087BA2C8D435 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A971D2A9675F8BED1BEFA24 /* AppViewModel.swift */; };
 		254CDE1C9E00C5BD19D2C484 /* ElectronAppCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4EE8321CABFA77AFBEF8126 /* ElectronAppCacheProvider.swift */; };
+		264C26FEEE2E29DE274CB53C /* SimulatorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAE92A69545EA0DF4DC30F5 /* SimulatorService.swift */; };
 		27C26503C8C7774791961577 /* CleanupSnapshotRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FC40229A876A403ABD36A6 /* CleanupSnapshotRegistryTests.swift */; };
 		2F3AE18E2DE9EFD1B2060843 /* AnalyzerLargeFileAndFolderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8A75022F490B0A489FE553 /* AnalyzerLargeFileAndFolderTests.swift */; };
 		32CDC4DE24621377DCBA0C35 /* PersistenceErrorBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A4A42F93457971B96A2C6B /* PersistenceErrorBanner.swift */; };
@@ -51,6 +52,8 @@
 		5C5473697B73D96A99C17845 /* FileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CD2AC480138C99D0EA5895 /* FileItem.swift */; };
 		5ECA9E5CACBF2F1AE637ACF7 /* ScanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17676657F02213A935EFE183 /* ScanModels.swift */; };
 		635465BD9BF9E7E418E146CD /* LargeFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E7AB9F3D1F3D0CB4FC7C495 /* LargeFilesView.swift */; };
+		642B0972AF32674BE2BE4CC4 /* SimulatorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4BD8F5EB1EBE496DF76427E /* SimulatorPanel.swift */; };
+		67823DC14DA844D873930E12 /* SimulatorServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45254093164FC6DEE6FCB656 /* SimulatorServiceTests.swift */; };
 		683A66AA06E09CD3A76AC24B /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A25474D18D1307261730E5A /* HistoryView.swift */; };
 		7072182F20FDF6513DC709C4 /* ScanProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 573B722D5DE8A5FA7CDE20E0 /* ScanProgressView.swift */; };
 		72A910695D71CBE36883F856 /* XcodeCleanupProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C8EFB0A0DC8F7FA3B389A5D /* XcodeCleanupProviders.swift */; };
@@ -153,6 +156,7 @@
 		3F484A4C77A427CF4B838DA7 /* CleanupItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupItem.swift; sourceTree = "<group>"; };
 		418A94A5F367C34CCF27EA87 /* URLContainmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLContainmentTests.swift; sourceTree = "<group>"; };
 		444CDF4873318E53653264BD /* DiskSweepTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DiskSweepTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		45254093164FC6DEE6FCB656 /* SimulatorServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorServiceTests.swift; sourceTree = "<group>"; };
 		45B53C0A9C8822509FC33307 /* SafetyValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyValidatorTests.swift; sourceTree = "<group>"; };
 		4608121C07ED172FB5CCAEC5 /* LowSpaceMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LowSpaceMonitorTests.swift; sourceTree = "<group>"; };
 		4A25474D18D1307261730E5A /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -210,6 +214,7 @@
 		BD847365A2191C38100DFF60 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		C0F471795CEC4A31D575AB02 /* CleanupScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupScope.swift; sourceTree = "<group>"; };
 		C2482816FE2115D26E1514BE /* ScanCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCancellationTests.swift; sourceTree = "<group>"; };
+		C4BD8F5EB1EBE496DF76427E /* SimulatorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorPanel.swift; sourceTree = "<group>"; };
 		C75823D2C3CC63D99A6252A6 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		CC0B5A9FCF2FA066124275C5 /* TrashProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashProvider.swift; sourceTree = "<group>"; };
 		CDFC370F032336BD60D5ACD4 /* DeveloperToolCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperToolCacheProvider.swift; sourceTree = "<group>"; };
@@ -227,6 +232,7 @@
 		EA056D924C6FF1BF88816A14 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		EA0A2C06A65BDEF997A397C5 /* ProviderSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSupport.swift; sourceTree = "<group>"; };
 		EB433A6AE0644B28C4DDFC98 /* AndroidSystemImagesProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AndroidSystemImagesProvider.swift; sourceTree = "<group>"; };
+		EEAE92A69545EA0DF4DC30F5 /* SimulatorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorService.swift; sourceTree = "<group>"; };
 		EED44E5113E8BB89B9244EFC /* DiskSweep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DiskSweep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F893D85C309C63C4A4DE1A /* CleanupReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupReviewView.swift; sourceTree = "<group>"; };
 		F4EE8321CABFA77AFBEF8126 /* ElectronAppCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectronAppCacheProvider.swift; sourceTree = "<group>"; };
@@ -295,6 +301,7 @@
 				65A8C338F582B65751215AC5 /* RunningAppMatcher.swift */,
 				3144E9DFDA8FA6F504712760 /* SafetyValidator.swift */,
 				7017E38FB8324CFE93D16DA6 /* SettingsStore.swift */,
+				EEAE92A69545EA0DF4DC30F5 /* SimulatorService.swift */,
 				14F1AC24228B67952131E481 /* TrashRestorer.swift */,
 				211B878BDE1255C18710B6FD /* URL+Containment.swift */,
 				888496A4A93F0CE9C53D0F13 /* Analyzers */,
@@ -310,6 +317,7 @@
 				70C41C31BFCFD107D9698C92 /* CleanupListView.swift */,
 				F2F893D85C309C63C4A4DE1A /* CleanupReviewView.swift */,
 				BD847365A2191C38100DFF60 /* DownloadsView.swift */,
+				C4BD8F5EB1EBE496DF76427E /* SimulatorPanel.swift */,
 				E14AEF53CFE0A266E3DB3BF1 /* TrashCleanupView.swift */,
 			);
 			path = Cleanup;
@@ -453,6 +461,7 @@
 				C2482816FE2115D26E1514BE /* ScanCancellationTests.swift */,
 				52EFE12524FCC5B942F75B48 /* ScanIssueMappingTests.swift */,
 				D62BA69BEBA6771736F041D2 /* SettingsStoreTests.swift */,
+				45254093164FC6DEE6FCB656 /* SimulatorServiceTests.swift */,
 				DEBBB71A10BEA89AC2F95A4E /* TrashRestorerTests.swift */,
 				418A94A5F367C34CCF27EA87 /* URLContainmentTests.swift */,
 				FEB3D02C58F5EA750E14523C /* Fakes */,
@@ -636,6 +645,8 @@
 				410E307B817D270FE07FDA38 /* SettingsStore.swift in Sources */,
 				79968ECD05E94514F90801E6 /* SettingsView.swift in Sources */,
 				093FFBA1B0C6C9679A65A9C6 /* SidebarDestination.swift in Sources */,
+				642B0972AF32674BE2BE4CC4 /* SimulatorPanel.swift in Sources */,
+				264C26FEEE2E29DE274CB53C /* SimulatorService.swift in Sources */,
 				A17D4934B59B26186285A048 /* StaleIDEVersionsProvider.swift in Sources */,
 				A892DFA586C4AF9105B9281C /* StandardCleanupProviders.swift in Sources */,
 				5668248F5256856FB4AA064D /* StorageVisualization.swift in Sources */,
@@ -678,6 +689,7 @@
 				DAADC469CA8AE195C89C2A35 /* ScanCancellationTests.swift in Sources */,
 				8120356CE84097874EB4655C /* ScanIssueMappingTests.swift in Sources */,
 				113AF11F06CAF4714610F739 /* SettingsStoreTests.swift in Sources */,
+				67823DC14DA844D873930E12 /* SimulatorServiceTests.swift in Sources */,
 				D12C4F9F509B505380DDC00B /* SpyCleanupEngine.swift in Sources */,
 				39336391CF30C7911F864FC4 /* TrashRestorerTests.swift in Sources */,
 				E7DCBFA04C384AB2753736BF /* URLContainmentTests.swift in Sources */,

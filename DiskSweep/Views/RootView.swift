@@ -187,7 +187,12 @@ struct RootView: View {
                 scan: model.startCleanupScan,
                 reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations)) },
                 quickLook: model.quickLook,
-                reveal: model.revealInFinder
+                reveal: model.revealInFinder,
+                accessory: AnyView(SimulatorPanel(
+                    check: model.simulatorCheck,
+                    checkNow: model.checkUnavailableSimulators,
+                    deleteAll: model.deleteUnavailableSimulators
+                ))
             )
 
         case .downloads:
