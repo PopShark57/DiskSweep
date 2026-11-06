@@ -4,6 +4,8 @@ struct CleanupCompleteView: View {
     let result: CleanupResult
     let done: () -> Void
     var reveal: (URL) -> Void = { _ in }
+    var undo: () -> Void = {}
+    var undoSummary: String?
 
     @State private var revealCheckmark = false
     @State private var showsFailures = false
@@ -71,11 +73,26 @@ struct CleanupCompleteView: View {
             }
 
             if result.reportedBytesMovedToTrash > 0 {
-                Label(
-                    "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) was moved to Trash and is not counted as recovered capacity until Trash is emptied.",
-                    systemImage: "trash"
-                )
-                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(
+                        "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) was moved to Trash and is not counted as recovered capacity until Trash is emptied.",
+                        systemImage: "trash"
+                    )
+                    .foregroundStyle(.secondary)
+                    if !result.trashedItems.isEmpty {
+                        HStack {
+                            if let undoSummary {
+                                Text(undoSummary)
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                            }
+                            Spacer()
+                            Button("Undo — Put Back \(result.trashedItems.count) Item\(result.trashedItems.count == 1 ? "" : "s")", action: undo)
+                                .disabled(undoSummary != nil)
+                        }
+                    }
+                }
                 .cardSurface()
             }
 

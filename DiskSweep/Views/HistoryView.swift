@@ -5,6 +5,7 @@ struct HistoryView: View {
     var persistenceError: String?
     var deleteEntry: (CleanupHistoryEntry.ID) -> Void = { _ in }
     var clearHistory: () -> Void = {}
+    var putBack: (CleanupHistoryEntry) -> Void = { _ in }
 
     @State private var confirmsClear = false
 
@@ -85,6 +86,11 @@ struct HistoryView: View {
                                     Text("\(entry.fileCount.formatted()) items")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                }
+
+                                if !entry.trashedItems.isEmpty {
+                                    Button("Put Back") { putBack(entry) }
+                                        .help("Move the \(entry.trashedItems.count) items this cleanup put in the Trash back where they were, if they're still there")
                                 }
 
                                 Button {

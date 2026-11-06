@@ -48,7 +48,9 @@ struct RootView: View {
                 CleanupCompleteView(
                     result: result,
                     done: model.dismissCleanupResult,
-                    reveal: model.revealInFinder
+                    reveal: model.revealInFinder,
+                    undo: model.undoLastCleanup,
+                    undoSummary: model.restoreSummary
                 )
             }
         }
@@ -248,7 +250,8 @@ struct RootView: View {
                 entries: model.history.entries,
                 persistenceError: model.history.lastPersistenceError,
                 deleteEntry: model.deleteHistoryEntry,
-                clearHistory: model.clearHistory
+                clearHistory: model.clearHistory,
+                putBack: model.putBack
             )
         }
     }

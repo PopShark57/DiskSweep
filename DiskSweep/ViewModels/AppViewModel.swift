@@ -43,6 +43,8 @@ final class AppViewModel {
     var errorMessage: String?
     /// The file Quick Look shows; `nil` closes the panel.
     var quickLookURL: URL?
+    /// What the last Undo or Put Back did, shown where it was requested.
+    var restoreSummary: String?
 
     let settings: SettingsStore
     let history: CleanupHistoryStore
@@ -358,6 +360,7 @@ final class AppViewModel {
 
     func dismissCleanupResult() {
         cleanupResult = nil
+        restoreSummary = nil
         downloadsAnalysis = nil
         startCleanupScan()
     }
@@ -449,6 +452,44 @@ final class AppViewModel {
     }
 
     func clearError() { errorMessage = nil }
+
+    // MARK: - Undo and Put Back
+
+    /// Moves the items the last cleanup put in the Trash back where they were.
+    func undoLastCleanup() {
+        guard let items = cleanupResult?.trashedItems, !items.isEmpty else { return }
+        restore(items)
+    }
+
+    /// Puts back the items a past cleanup moved to the Trash.
+    func putBack(_ entry: CleanupHistoryEntry) {
+        guard !entry.trashedItems.isEmpty else { return }
+        restore(entry.trashedItems, showsAlert: true)
+    }
+
+    private func restore(_ items: [TrashedItem], showsAlert: Bool = false) {
+        Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                TrashRestorer().restore(items)
+            }.value
+            guard let self else { return }
+            let summary = Self.restoreSummary(outcome)
+            restoreSummary = summary
+            if showsAlert { errorMessage = summary }
+        }
+    }
+
+    nonisolated static func restoreSummary(_ outcome: TrashRestorer.Outcome) -> String {
+        var parts: [String] = []
+        if !outcome.restored.isEmpty {
+            parts.append("Put back \(outcome.restored.count) item\(outcome.restored.count == 1 ? "" : "s").")
+        }
+        if !outcome.notRestored.isEmpty {
+            let details = outcome.notRestored.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
+            parts.append("\(outcome.notRestored.count) item\(outcome.notRestored.count == 1 ? " was" : "s were") left in the Trash.\n\(details)")
+        }
+        return parts.isEmpty ? "Nothing to put back." : parts.joined(separator: " ")
+    }
 
     // MARK: - History management
 

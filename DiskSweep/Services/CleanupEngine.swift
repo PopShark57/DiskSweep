@@ -40,18 +40,31 @@ protocol CleanupPerforming: Sendable {
 }
 
 actor CleanupEngine: CleanupPerforming {
+    /// Moves a validated item to the Trash and returns where it ended up, if known.
+    typealias TrashMover = @Sendable (URL) throws -> URL?
+
+    /// The system Trash, through `FileManager.trashItem`.
+    static let systemTrashMover: TrashMover = { url in
+        var resultingURL: NSURL?
+        try FileManager().trashItem(at: url, resultingItemURL: &resultingURL)
+        return resultingURL as URL?
+    }
+
     private let safetyValidator: SafetyValidator
     private let diskService: DiskService
     private let snapshots: CleanupSnapshotRegistry
+    private let trashMover: TrashMover
 
     init(
         safetyValidator: SafetyValidator = SafetyValidator(),
         diskService: DiskService = DiskService(),
-        snapshots: CleanupSnapshotRegistry = .shared
+        snapshots: CleanupSnapshotRegistry = .shared,
+        trashMover: @escaping TrashMover = CleanupEngine.systemTrashMover
     ) {
         self.safetyValidator = safetyValidator
         self.diskService = diskService
         self.snapshots = snapshots
+        self.trashMover = trashMover
     }
 
     func clean(
@@ -81,6 +94,7 @@ actor CleanupEngine: CleanupPerforming {
             uniquingKeysWith: { first, _ in first }
         )
         let validator = safetyValidator
+        let moveToTrash = trashMover
 
         let orderedItems = deduplicated(items).sorted {
             $0.url.standardizedFileURL.pathComponents.count
@@ -173,17 +187,16 @@ actor CleanupEngine: CleanupPerforming {
                     try Task.checkCancellation()
 
                     let manager = FileManager()
+                    var trashURL: URL?
                     switch itemDisposition {
                     case .permanent:
                         try manager.removeItem(at: validated.deletionURL)
                     case .trash:
-                        try manager.trashItem(
-                            at: validated.deletionURL,
-                            resultingItemURL: nil
-                        )
+                        // Recorded so the move can be undone (Undo, or Put Back in History).
+                        trashURL = try moveToTrash(validated.deletionURL)
                     }
 
-                    return validated
+                    return (validated: validated, trashURL: trashURL)
                 }
                 let outcome = try await withTaskCancellationHandler {
                     try await deletionTask.value
@@ -196,10 +209,12 @@ actor CleanupEngine: CleanupPerforming {
                     location: item.location,
                     bytes: item.size,
                     fileCount: item.fileCount,
-                    disposition: itemDisposition
+                    disposition: itemDisposition,
+                    originalPath: outcome.trashURL == nil ? nil : outcome.validated.deletionURL.path,
+                    trashURL: outcome.trashURL
                 ))
-                if outcome.identity.kind == .directory {
-                    removedDirectories.append(outcome.deletionURL)
+                if outcome.validated.identity.kind == .directory {
+                    removedDirectories.append(outcome.validated.deletionURL)
                 }
             } catch is CancellationError {
                 snapshots.remove(

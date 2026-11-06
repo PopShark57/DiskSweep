@@ -26,6 +26,10 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
     let bytes: Int64
     let fileCount: Int
     let disposition: CleanupDisposition
+    /// For items moved to the Trash: where the item was, and where it went, so the move can
+    /// be undone. `nil` for permanent deletions.
+    let originalPath: String?
+    let trashURL: URL?
 
     init(
         id: UUID = UUID(),
@@ -33,7 +37,9 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
         location: CleanupLocation,
         bytes: Int64,
         fileCount: Int,
-        disposition: CleanupDisposition
+        disposition: CleanupDisposition,
+        originalPath: String? = nil,
+        trashURL: URL? = nil
     ) {
         self.id = id
         self.name = name
@@ -41,7 +47,22 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
         self.bytes = max(0, bytes)
         self.fileCount = max(0, fileCount)
         self.disposition = disposition
+        self.originalPath = originalPath
+        self.trashURL = trashURL
     }
+
+    /// The item as something that can be put back, if it went to the Trash.
+    var trashedItem: TrashedItem? {
+        guard let originalPath, let trashURL else { return nil }
+        return TrashedItem(name: name, originalPath: originalPath, trashPath: trashURL.path)
+    }
+}
+
+/// An item moved to the Trash by a cleanup, recorded so it can be put back.
+struct TrashedItem: Codable, Hashable, Sendable {
+    let name: String
+    let originalPath: String
+    let trashPath: String
 }
 
 struct CleanupResult: Codable, Hashable, Sendable {
@@ -123,6 +144,8 @@ struct CleanupResult: Codable, Hashable, Sendable {
     var fileCount: Int {
         cleanedItems.reduce(0) { $0 + $1.fileCount }
     }
+
+    var trashedItems: [TrashedItem] { cleanedItems.compactMap(\.trashedItem) }
 }
 
 struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
@@ -133,6 +156,9 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let fileCount: Int
     let categories: [CleanupLocation]
     let failureCount: Int
+    /// Items this cleanup moved to the Trash, for Put Back. Empty in entries recorded before
+    /// this was added.
+    let trashedItems: [TrashedItem]
 
     init(
         id: UUID = UUID(),
@@ -141,7 +167,8 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         bytesMovedToTrash: Int64 = 0,
         fileCount: Int,
         categories: [CleanupLocation],
-        failureCount: Int
+        failureCount: Int,
+        trashedItems: [TrashedItem] = []
     ) {
         self.id = id
         self.date = date
@@ -150,6 +177,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         self.fileCount = max(0, fileCount)
         self.categories = categories
         self.failureCount = max(0, failureCount)
+        self.trashedItems = trashedItems
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -160,6 +188,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         case fileCount
         case categories
         case failureCount
+        case trashedItems
     }
 
     init(from decoder: Decoder) throws {
@@ -170,6 +199,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         fileCount = max(0, try container.decode(Int.self, forKey: .fileCount))
         categories = try container.decodeLossyLocations(forKey: .categories)
         failureCount = max(0, try container.decode(Int.self, forKey: .failureCount))
+        trashedItems = (try? container.decodeIfPresent([TrashedItem].self, forKey: .trashedItems)) ?? []
 
         if let recordedTrashBytes = try container.decodeIfPresent(
             Int64.self,
@@ -198,5 +228,8 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         try container.encode(fileCount, forKey: .fileCount)
         try container.encode(categories, forKey: .categories)
         try container.encode(failureCount, forKey: .failureCount)
+        if !trashedItems.isEmpty {
+            try container.encode(trashedItems, forKey: .trashedItems)
+        }
     }
 }

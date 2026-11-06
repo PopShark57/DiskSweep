@@ -54,6 +54,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
   ~/Library/Application Support/DiskSweep/cleanup-history.json
   ```
 
+- Undo and Put Back: when a cleanup moves items to the Trash, it records where each one went. The completion sheet offers **Undo**, and History offers **Put Back** for past cleanups. An item is only moved back if it's still in a Trash folder, its original folder still exists, and nothing has taken its original name; DiskSweep never overwrites a file to restore one. Permanent deletions and emptied Trash items can't be put back.
 - History can be managed in the app: delete one entry (trash button or context menu) or clear it all (**Clear History…**). Turning off **Keep local cleanup history** offers to delete the existing history file.
 - Settings and history load tolerantly. A category this build doesn't know (for example after a downgrade) is dropped instead of discarding everything, and one damaged history entry doesn't discard the others. An unreadable history file is moved aside as `cleanup-history.unreadable-<date>.json` before anything is written, and unreadable settings are kept under `com.disksweep.settings.v1.unreadable`; if the history file can't be moved aside, history becomes read-only rather than overwriting it. The History and Settings screens show these problems in a banner.
 - Native Finder reveal and Quick Look support.

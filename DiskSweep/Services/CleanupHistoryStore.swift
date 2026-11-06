@@ -64,7 +64,8 @@ final class CleanupHistoryStore {
             bytesMovedToTrash: result.reportedBytesMovedToTrash,
             fileCount: result.fileCount,
             categories: categories,
-            failureCount: result.failures.count
+            failureCount: result.failures.count,
+            trashedItems: result.trashedItems
         )
 
         try add(entry)
