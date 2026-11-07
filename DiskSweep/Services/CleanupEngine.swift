@@ -58,17 +58,22 @@ actor CleanupEngine: CleanupPerforming {
     private let diskService: DiskService
     private let snapshots: CleanupSnapshotRegistry
     private let trashMover: TrashMover
+    /// Test hook: runs right before a permanent removal, after the final revalidation, to
+    /// simulate a concurrent change in that window.
+    private let beforePermanentRemoval: (@Sendable (URL) -> Void)?
 
     init(
         safetyValidator: SafetyValidator = SafetyValidator(),
         diskService: DiskService = DiskService(),
         snapshots: CleanupSnapshotRegistry = .shared,
-        trashMover: @escaping TrashMover = CleanupEngine.systemTrashMover
+        trashMover: @escaping TrashMover = CleanupEngine.systemTrashMover,
+        beforePermanentRemoval: (@Sendable (URL) -> Void)? = nil
     ) {
         self.safetyValidator = safetyValidator
         self.diskService = diskService
         self.snapshots = snapshots
         self.trashMover = trashMover
+        self.beforePermanentRemoval = beforePermanentRemoval
     }
 
     func clean(
@@ -99,6 +104,7 @@ actor CleanupEngine: CleanupPerforming {
         )
         let validator = safetyValidator
         let moveToTrash = trashMover
+        let removalHook = beforePermanentRemoval
 
         let orderedItems = deduplicated(items).sorted {
             $0.url.standardizedFileURL.pathComponents.count
@@ -194,11 +200,13 @@ actor CleanupEngine: CleanupPerforming {
                     )
                     try Task.checkCancellation()
 
-                    let manager = FileManager()
                     var trashURL: URL?
                     switch itemDisposition {
                     case .permanent:
-                        try manager.removeItem(at: validated.deletionURL)
+                        removalHook?(validated.deletionURL)
+                        // Descriptor-relative, so a folder swapped for a link after the
+                        // revalidation above can't redirect the removal (7.5).
+                        try SecureRemoval.removeItem(validated)
                     case .trash:
                         // Recorded so the move can be undone (Undo, or Put Back in History).
                         trashURL = try moveToTrash(validated.deletionURL)
