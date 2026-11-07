@@ -27,9 +27,15 @@ struct DiskSweepApp: App {
             .frame(width: 760, height: 560)
         }
 
+        // The setter only writes real changes. MenuBarExtra writes the current value back
+        // while it sets up; writing it unconditionally marks the settings as changed, which
+        // rebuilds this scene, which writes again, until the stack overflows at launch.
         MenuBarExtra(isInserted: Binding(
             get: { model.settings.general.showsMenuBarExtra },
-            set: { model.settings.general.showsMenuBarExtra = $0 }
+            set: { isInserted in
+                guard model.settings.general.showsMenuBarExtra != isInserted else { return }
+                model.settings.general.showsMenuBarExtra = isInserted
+            }
         )) {
             MenuBarContent(model: model)
         } label: {
