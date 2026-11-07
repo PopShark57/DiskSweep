@@ -729,4 +729,4 @@ Branch `implement/improvements-plan`. Decisions Q1–Q8 use the recommended defa
 | F9 menu bar extra | done (off by default) | 8afe031 | `LowSpaceMonitorTests`, `testSettingsWithoutMenuBarKeysLoadWithThemOff` | Menu bar extra and notification permission prompt: pending |
 | F6 simulators | done (unavailable simulators only; old runtimes not offered) | cf0e678 | `SimulatorServiceTests` (3, recording runner; simctl never run) | Check/Delete against real Xcode: pending (deliberately not run) |
 | F7 Android locations | done. Deviation: user-chosen folders only; Android Studio's settings and `ANDROID_HOME` aren't read (GUI apps don't inherit shell variables). | a07cf34 | `testCustomSDKAndDeviceFoldersAreUsedForScanAndRecheck`; negative `testCustomSDKImageThatADeviceStartedUsingIsRefused`, `testValidatorAcceptsOnlyRealCustomSDKImageRoots` | Settings rows: pending |
-| F1/F2 (Q7) | design document only: `docs/design/user-file-cleanup.md`. Not implemented. | _see next commit_ | — | Needs your decision |
+| F1/F2 (Q7) | design document only: `docs/design/user-file-cleanup.md`. Not implemented. | 1d4fae9 | — | Needs your decision |
