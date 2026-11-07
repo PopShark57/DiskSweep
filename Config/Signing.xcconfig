@@ -1,0 +1,6 @@
+// Shared signing configuration, referenced from project.yml.
+//
+// Your development team ID lives in Config/Local.xcconfig, which is gitignored so it is
+// never committed. Copy Config/Local.xcconfig.example to Config/Local.xcconfig and fill in
+// your team ID. Without it, Xcode signs the app and tests to run locally (ad hoc).
+#include? "Local.xcconfig"

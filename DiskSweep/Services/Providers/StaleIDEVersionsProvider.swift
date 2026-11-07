@@ -20,7 +20,7 @@ enum StaleIDEVersionRules {
 
     /// Plugins bundle their own Node.js dependencies, and Settings Sync keeps a local Git
     /// history of the IDE's settings in `settingsSync/.git`. Both belong to the IDE version.
-    static let permittedNestedNames: Set<String> = ["node_modules", ".git"]
+    static var permittedNestedNames: Set<String> { CleanupLocation.staleIDEVersions.permittedNestedNames }
 
     struct VersionedFolder: Hashable, Sendable {
         let url: URL
@@ -149,6 +149,7 @@ struct StaleIDEVersionsProvider: CleanupProvider {
         StaleIDEVersionRules.roots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

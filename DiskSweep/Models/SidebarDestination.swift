@@ -8,11 +8,9 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
     case downloads
     case trash
     case largeFiles
-    case largeFolders
     case duplicates
     case diskUsage
     case history
-    case settings
 
     enum Group: String, CaseIterable {
         case overview
@@ -23,7 +21,10 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
 
     var id: String { rawValue }
 
-    var title: String {
+    /// The localized sidebar title.
+    var title: String { String(localized: titleResource) }
+
+    var titleResource: LocalizedStringResource {
         switch self {
         case .overview: "Overview"
         case .smartCleanup: "Smart Cleanup"
@@ -32,11 +33,9 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
         case .downloads: "Downloads"
         case .trash: "Trash"
         case .largeFiles: "Large Files"
-        case .largeFolders: "Large Folders"
         case .duplicates: "Duplicates"
         case .diskUsage: "Disk Usage"
         case .history: "History"
-        case .settings: "Settings"
         }
     }
 
@@ -49,11 +48,9 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
         case .downloads: "arrow.down.circle"
         case .trash: "trash"
         case .largeFiles: "doc.text.magnifyingglass"
-        case .largeFolders: "folder.badge.questionmark"
         case .duplicates: "square.on.square"
         case .diskUsage: "chart.pie"
         case .history: "clock.arrow.trianglehead.counterclockwise.rotate.90"
-        case .settings: "gearshape"
         }
     }
 
@@ -62,9 +59,9 @@ enum SidebarDestination: String, CaseIterable, Hashable, Identifiable, Sendable 
         case .overview: .overview
         case .smartCleanup, .applicationCaches, .developerFiles, .downloads, .trash:
             .cleanup
-        case .largeFiles, .largeFolders, .duplicates, .diskUsage:
+        case .largeFiles, .duplicates, .diskUsage:
             .analyze
-        case .history, .settings:
+        case .history:
             .activity
         }
     }

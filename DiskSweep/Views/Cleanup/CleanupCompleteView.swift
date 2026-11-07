@@ -3,8 +3,12 @@ import SwiftUI
 struct CleanupCompleteView: View {
     let result: CleanupResult
     let done: () -> Void
+    var reveal: (URL) -> Void = { _ in }
+    var undo: () -> Void = {}
+    var undoSummary: String?
 
     @State private var revealCheckmark = false
+    @State private var showsFailures = false
 
     private var recoveredBytes: Int64 {
         result.creditedBytesRecovered
@@ -12,7 +16,7 @@ struct CleanupCompleteView: View {
 
     private var completionSummary: String {
         if recoveredBytes > 0 {
-            return "\(FileSizeFormatter.string(fromByteCount: recoveredBytes)) recovered"
+            return "About \(FileSizeFormatter.string(fromByteCount: recoveredBytes)) recovered"
         }
         if result.reportedBytesMovedToTrash > 0 {
             return "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) moved to Trash"
@@ -59,21 +63,63 @@ struct CleanupCompleteView: View {
                 )
             }
 
-            if result.reportedBytesMovedToTrash > 0 {
+            if result.measuredRecoveryLooksLow {
                 Label(
-                    "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) was moved to Trash and is not counted as recovered capacity until Trash is emptied.",
-                    systemImage: "trash"
+                    "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesPermanentlyRemoved)) was deleted. Space may be held by local snapshots or still being freed, so less free space was measured.",
+                    systemImage: "clock.arrow.circlepath"
                 )
                 .foregroundStyle(.secondary)
                 .cardSurface()
             }
 
+            if result.reportedBytesMovedToTrash > 0 {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(
+                        "\(FileSizeFormatter.string(fromByteCount: result.reportedBytesMovedToTrash)) was moved to Trash and is not counted as recovered capacity until Trash is emptied.",
+                        systemImage: "trash"
+                    )
+                    .foregroundStyle(.secondary)
+                    if !result.trashedItems.isEmpty {
+                        HStack {
+                            if let undoSummary {
+                                Text(undoSummary)
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                            }
+                            Spacer()
+                            Button("Undo — Put Back \(result.trashedItems.count) Item\(result.trashedItems.count == 1 ? "" : "s")", action: undo)
+                                .disabled(undoSummary != nil)
+                        }
+                    }
+                }
+                .cardSurface()
+            }
+
             if !result.failures.isEmpty {
-                Label(
-                    "\(result.failures.count) item\(result.failures.count == 1 ? "" : "s") could not be cleaned. Other items completed safely.",
-                    systemImage: "exclamationmark.triangle"
-                )
-                .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(
+                        "\(result.failures.count) item\(result.failures.count == 1 ? "" : "s") could not be cleaned. Other items completed safely.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(.orange)
+
+                    DisclosureGroup(
+                        "Show \(result.failures.count) item\(result.failures.count == 1 ? "" : "s") that weren't cleaned",
+                        isExpanded: $showsFailures
+                    ) {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 10) {
+                                ForEach(result.failures) { failure in
+                                    failureRow(failure)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                        .frame(maxHeight: 220)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .cardSurface()
             }
 
@@ -88,6 +134,35 @@ struct CleanupCompleteView: View {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
                 revealCheckmark = true
             }
+        }
+    }
+
+    private func failureRow(_ failure: CleanupFailure) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(failure.itemName)
+                    .font(.callout.weight(.medium))
+                Text(failure.path)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(failure.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .textSelection(.enabled)
+            Spacer(minLength: 8)
+            Button {
+                reveal(URL(fileURLWithPath: failure.path))
+            } label: {
+                Label("Reveal in Finder", systemImage: "folder")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(failure.itemName) in Finder")
         }
     }
 

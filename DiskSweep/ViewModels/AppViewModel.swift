@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+enum SimulatorCheck: Equatable, Sendable {
+    case notChecked
+    case checking
+    case found([UnavailableSimulator])
+    case deleting
+    case failed(String)
+}
+
 enum AnalysisActivity: String, Sendable {
     case downloads
     case largeFiles
@@ -20,10 +28,17 @@ final class AppViewModel {
     var lastScanWasCancelled = false
     var isCleaning = false
     var showsCleanupReview = false
+    /// What the open review sheet covers, and what Clean will remove.
+    var pendingReviewScope: CleanupScope = .locations([])
     var cleanupResult: CleanupResult?
 
-    var downloadsAnalysis: DownloadsAnalysis?
+    var downloadsAnalysis: DownloadsAnalysis? {
+        didSet { rebuildDownloadCleanupItems() }
+    }
     var selectedDownloadFileIDs: Set<UUID> = []
+    /// The Downloads files the Downloads screen's filters and search currently show, as
+    /// reported by that screen. `nil` until it reports, which means no filter is applied.
+    var downloadsVisibleFileIDs: Set<UUID>?
     var largeFiles: [FileItem] = []
     var largeFileThreshold: Int64 = LargeFileAnalyzer.defaultThreshold
     var selectedLargeFileID: UUID?
@@ -34,29 +49,68 @@ final class AppViewModel {
     var analysisProgress: ScanProgress?
 
     var errorMessage: String?
+    /// The file Quick Look shows; `nil` closes the panel.
+    var quickLookURL: URL?
+    /// What the last Undo or Put Back did, shown where it was requested.
+    var restoreSummary: String?
+    /// Cache items that appear to belong to a running app (item ID → app name). They're not
+    /// preselected and are marked "In use"; they can still be chosen.
+    var inUseItemNames: [UUID: String] = [:]
+    var simulatorCheck: SimulatorCheck = .notChecked
 
     let settings: SettingsStore
     let history: CleanupHistoryStore
     let permissions: PermissionManager
 
-    @ObservationIgnored private let homeDirectory: URL
+    @ObservationIgnored let homeDirectory: URL
     @ObservationIgnored private let standardProviders: [any CleanupProvider]
     @ObservationIgnored private let diskService: DiskService
-    @ObservationIgnored private let cleanupEngine: CleanupEngine
+    @ObservationIgnored private let cleanupEngine: any CleanupPerforming
+    /// Shared by every scan context and the cleanup engine, so cleanup finds the identities
+    /// the scan recorded.
+    @ObservationIgnored let snapshots: CleanupSnapshotRegistry
     @ObservationIgnored private let finderService: FinderService
+    @ObservationIgnored private let runningApps: @MainActor () -> [RunningApp]
+    @ObservationIgnored private let simulatorService: SimulatorService
     @ObservationIgnored private var cleanupScanTask: Task<Void, Never>?
+    /// A cancelled scan that may still be finishing its current provider. The next scan waits
+    /// for it, so the two never run providers at the same time.
+    @ObservationIgnored private var retiredScanTask: Task<Void, Never>?
+    /// Incremented whenever a scan starts or is cancelled. A scan task only changes state
+    /// while its generation is current, so a cancelled scan can't touch a newer one.
+    @ObservationIgnored private var scanGeneration = 0
+    /// How many providers scan at the same time. Set to 1 to scan one after another, for
+    /// example on spinning or network disks.
+    static let maximumConcurrentProviderScans = 3
+    @ObservationIgnored private var completedProviderCount = 0
+    @ObservationIgnored private var accumulatedScanFiles = 0
+    @ObservationIgnored private var accumulatedScanBytes: Int64 = 0
+    /// The latest progress of each provider still scanning, summed into the scan's progress.
+    @ObservationIgnored private var inFlightProgress: [String: ScanProgress] = [:]
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
+    @ObservationIgnored private var retiredAnalysisTask: Task<Void, Never>?
+    @ObservationIgnored private var analysisGeneration = 0
     @ObservationIgnored private var cleanupTask: Task<Void, Never>?
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var lowSpaceMonitor = LowSpaceMonitor()
+    @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    /// Cleanup items for the current Downloads analysis, keyed by file ID. Built once per
+    /// analysis, so reading the selection never records new registry snapshots.
+    @ObservationIgnored private var downloadCleanupItems: [UUID: CleanupItem] = [:]
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory,
+        standardProviders: [any CleanupProvider]? = nil,
         settings: SettingsStore = SettingsStore(),
         history: CleanupHistoryStore = CleanupHistoryStore(),
         permissions: PermissionManager = PermissionManager(),
         diskService: DiskService = DiskService(),
-        cleanupEngine: CleanupEngine = CleanupEngine(),
-        finderService: FinderService = .shared
+        snapshots: CleanupSnapshotRegistry = CleanupSnapshotRegistry(),
+        cleanupEngine: (any CleanupPerforming)? = nil,
+        finderService: FinderService = .shared,
+        runningApps: @escaping @MainActor () -> [RunningApp] = RunningAppMatcher.systemRunningApps,
+        simulatorService: SimulatorService = SimulatorService()
     ) {
         let home = homeDirectory.standardizedFileURL
         self.homeDirectory = home
@@ -64,16 +118,39 @@ final class AppViewModel {
         self.history = history
         self.permissions = permissions
         self.diskService = diskService
-        self.cleanupEngine = cleanupEngine
+        self.snapshots = snapshots
+        // An injected engine must be built with the same registry.
+        self.cleanupEngine = cleanupEngine ?? CleanupEngine(
+            diskService: diskService,
+            snapshots: snapshots
+        )
         self.finderService = finderService
-        standardProviders = StandardCleanupProviders.all(homeDirectory: home)
+        self.runningApps = runningApps
+        self.simulatorService = simulatorService
+        self.standardProviders = standardProviders ?? StandardCleanupProviders.all(
+            homeDirectory: home,
+            temporaryDirectory: temporaryDirectory
+        )
     }
 
     /// The fixed cleanup locations plus the project folders currently chosen in Settings.
     /// Cleanup authorizations are built from this at cleanup time, so removing a project
     /// folder also revokes cleanup of anything previously found inside it.
     private var providers: [any CleanupProvider] {
-        standardProviders + [
+        // Android images follow the SDK and device folders chosen in Settings, if any.
+        let developer = settings.developer
+        let configured: [any CleanupProvider] = standardProviders.map { provider in
+            guard provider.id == AndroidSystemImagesProvider.providerID,
+                  developer.androidSDKFolder != nil || developer.androidAVDFolder != nil else {
+                return provider
+            }
+            return AndroidSystemImagesProvider(
+                homeDirectory: homeDirectory,
+                sdkDirectory: developer.androidSDKFolder,
+                avdDirectory: developer.androidAVDFolder
+            )
+        }
+        return configured + [
             ProjectArtifactsProvider(
                 projectFolders: settings.developer.projectFolders,
                 minimumAge: settings.projectIdleInterval,
@@ -93,22 +170,36 @@ final class AppViewModel {
             .flatMap(\.items)
             .filter { selectedCleanupItemIDs.contains($0.id) }
 
-        guard let downloadsAnalysis,
-              let provider = providers.first(where: { $0.id == DownloadsProvider.providerID })
-                as? DownloadsProvider else {
-            return categoryItems
-        }
-
+        guard let downloadsAnalysis else { return categoryItems }
         let downloadItems = downloadsAnalysis.allFiles
             .filter { selectedDownloadFileIDs.contains($0.id) }
-            .compactMap(provider.cleanupItem(for:))
+            .compactMap { downloadCleanupItems[$0.id] }
         return categoryItems + downloadItems
     }
 
-    var selectedCleanupSize: Int64 {
-        selectedCleanupItems.reduce(0) { partial, item in
-            addingClamped(partial, item.size)
+    /// The selected items a review of `scope` would clean.
+    func cleanupItems(in scope: CleanupScope) -> [CleanupItem] {
+        switch scope {
+        case let .locations(locations):
+            return categories
+                .filter { locations.contains($0.location) }
+                .flatMap(\.items)
+                .filter { selectedCleanupItemIDs.contains($0.id) }
+        case .downloads:
+            guard let downloadsAnalysis else { return [] }
+            // Selected files that filters or search hide are never reviewed or cleaned.
+            let reviewable = downloadsVisibleFileIDs.map { selectedDownloadFileIDs.intersection($0) }
+                ?? selectedDownloadFileIDs
+            return downloadsAnalysis.allFiles
+                .filter { reviewable.contains($0.id) }
+                .compactMap { downloadCleanupItems[$0.id] }
         }
+    }
+
+    /// Selected Downloads files that the current filters or search hide.
+    var hiddenSelectedDownloadCount: Int {
+        guard let downloadsVisibleFileIDs else { return 0 }
+        return selectedDownloadFileIDs.subtracting(downloadsVisibleFileIDs).count
     }
 
     func startup() async {
@@ -118,11 +209,44 @@ final class AppViewModel {
         if settings.general.automaticallyScanOnLaunch {
             startCleanupScan()
         }
+        startPolling()
+    }
+
+    /// Refreshes free space every 15 minutes while the menu bar extra or the low-space
+    /// notification is on. Disk statistics are read at utility priority, off the main actor.
+    private func startPolling() {
+        pollingTask?.cancel()
+        pollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: LowSpaceMonitor.pollInterval)
+                guard let self, !Task.isCancelled else { return }
+                let general = settings.general
+                guard general.showsMenuBarExtra || general.notifiesWhenSpaceIsLow else { continue }
+                await refreshDiskStatistics()
+                await checkLowSpace()
+            }
+        }
+    }
+
+    /// Posts a notification when free space first drops below the chosen threshold.
+    func checkLowSpace() async {
+        guard settings.general.notifiesWhenSpaceIsLow else { return }
+        let threshold = Int64(settings.general.lowSpaceThresholdGB) * 1_000_000_000
+        if lowSpaceMonitor.shouldNotify(available: diskStatistics.available, thresholdBytes: threshold) {
+            await LowSpaceMonitor.postLowSpaceNotification(
+                available: diskStatistics.available,
+                volumeName: diskStatistics.volumeName
+            )
+        }
     }
 
     func startCleanupScan() {
         guard cleanupScanTask == nil, !isCleaning else { return }
         cancelAnalysis()
+        scanGeneration += 1
+        let generation = scanGeneration
+        let previousScan = retiredScanTask
+        retiredScanTask = nil
         lastScanWasCancelled = false
         cleanupScanProgress = ScanProgress(
             phase: .preparing,
@@ -135,68 +259,84 @@ final class AppViewModel {
         )
 
         cleanupScanTask = Task { [weak self] in
-            guard let self else { return }
+            // A cancelled scan may still be inside a provider. Let it finish first, so its
+            // cancellation cleanup can't erase snapshots this scan records.
+            await previousScan?.value
+            guard let self, generation == scanGeneration else { return }
+
             let enabledLocations = settings.effectiveScanLocations
-            let scanProviders = providers.filter {
+            let allProviders = providers
+            let scanProviders = allProviders.filter {
                 enabledLocations.contains($0.location) && $0.location != .downloads
             }
+            // Several providers list folders to find their roots. Do that once per scan, off
+            // the main actor. The plan only filters what's displayed; cleanup re-derives roots
+            // inside the engine, so a project folder removed in the meantime is still refused.
+            let plan = await Self.makeScanPlan(for: allProviders)
+            guard generation == scanGeneration else { return }
             cleanupScanProgress?.totalProviders = scanProviders.count
             categories = []
             selectedCleanupItemIDs = []
 
-            var completed = 0
-            var accumulatedFiles = 0
-            var accumulatedBytes: Int64 = 0
+            completedProviderCount = 0
+            accumulatedScanFiles = 0
+            accumulatedScanBytes = 0
+            inFlightProgress = [:]
+            inUseItemNames = [:]
+            let running = runningApps()
+            let totalProviders = scanProviders.count
+            let context = makeScanContext()
 
-            for provider in scanProviders {
-                if Task.isCancelled { break }
-                let priorFiles = accumulatedFiles
-                let priorBytes = accumulatedBytes
-                let priorCompleted = completed
-                let totalProviders = scanProviders.count
+            // A few providers run at once; most walk separate folder trees, so this mostly
+            // overlaps I/O waits. Results are inserted in category order as they finish.
+            await withTaskGroup(
+                of: (provider: any CleanupProvider, result: ProviderScanResult).self
+            ) { group in
+                var pending = scanProviders[...]
 
-                let result = await provider.scan(context: makeScanContext()) { [weak self] update in
-                    await self?.applyCleanupProgress(
-                        update,
-                        priorFiles: priorFiles,
-                        priorBytes: priorBytes,
-                        completedProviders: priorCompleted,
-                        totalProviders: totalProviders
+                func startNext() {
+                    guard let provider = pending.popFirst() else { return }
+                    let providerID = provider.id
+                    let progress: ScanProgressHandler = { [weak self] update in
+                        await self?.applyCleanupProgress(
+                            update,
+                            providerID: providerID,
+                            generation: generation,
+                            totalProviders: totalProviders
+                        )
+                    }
+                    group.addTask {
+                        let signpost = Log.signposter.beginInterval(
+                            "Provider scan",
+                            id: Log.signposter.makeSignpostID(),
+                            "\(providerID, privacy: .public)"
+                        )
+                        let result = await provider.scan(context: context, progress: progress)
+                        Log.signposter.endInterval("Provider scan", signpost)
+                        return (provider, result)
+                    }
+                }
+
+                for _ in 0..<Self.maximumConcurrentProviderScans { startNext() }
+
+                for await (provider, result) in group {
+                    // Every await is a point where this scan may have been cancelled or replaced.
+                    guard generation == scanGeneration, !Task.isCancelled else {
+                        group.cancelAll()
+                        return
+                    }
+                    publish(
+                        result,
+                        from: provider,
+                        plan: plan,
+                        totalProviders: totalProviders,
+                        runningApps: running
                     )
+                    startNext()
+                    await refreshDiskStatistics()
                 }
-
-                if Task.isCancelled { break }
-                let filteredItems = removeProviderOverlaps(
-                    result.items,
-                    ownerProviderID: provider.id
-                )
-                let category = CleanupCategory(
-                    location: result.location,
-                    items: filteredItems,
-                    issues: result.issues,
-                    scannedAt: Date()
-                )
-                categories.append(category)
-                categories.sort { locationOrder($0.location) < locationOrder($1.location) }
-
-                for item in filteredItems where item.isSelectedByDefault && item.isDeletable {
-                    selectedCleanupItemIDs.insert(item.id)
-                }
-                accumulatedFiles += category.fileCount
-                accumulatedBytes = addingClamped(accumulatedBytes, category.totalSize)
-                completed += 1
-                cleanupScanProgress = ScanProgress(
-                    phase: .enumerating,
-                    location: provider.location,
-                    currentPath: provider.allowedRoots.first?.path ?? "",
-                    filesAnalyzed: accumulatedFiles,
-                    bytesFound: accumulatedBytes,
-                    completedProviders: completed,
-                    totalProviders: scanProviders.count
-                )
-                await refreshDiskStatistics()
             }
-
+            guard generation == scanGeneration else { return }
             if !Task.isCancelled {
                 lastScanDate = Date()
                 lastScanWasCancelled = false
@@ -209,16 +349,24 @@ final class AppViewModel {
         }
     }
 
+    /// Cancels a running scan. Does nothing when no scan is running, so a completed scan is
+    /// never relabeled as partial.
     func cancelCleanupScan() {
-        cleanupScanTask?.cancel()
-        lastScanWasCancelled = true
+        guard let task = cleanupScanTask else { return }
+        task.cancel()
+        scanGeneration += 1
+        retiredScanTask = task
         cleanupScanTask = nil
         cleanupScanProgress = nil
+        lastScanWasCancelled = true
     }
 
-    func requestCleanupReview() {
-        let items = selectedCleanupItems
+    /// Opens the review sheet for exactly the items `scope` covers. Without confirmation and
+    /// with only safe items, it cleans that same scope directly.
+    func requestCleanupReview(scope: CleanupScope) {
+        let items = cleanupItems(in: scope)
         guard !items.isEmpty else { return }
+        pendingReviewScope = scope
         let containsSensitiveItems = items.contains { $0.risk != .safe || $0.location == .trash }
 
         if settings.general.confirmBeforeCleanup || containsSensitiveItems {
@@ -228,9 +376,11 @@ final class AppViewModel {
         }
     }
 
+    /// Cleans the items in `pendingReviewScope`, the same items the review sheet lists.
     func performCleanup(disposition: CleanupDisposition?) {
         guard !isCleaning else { return }
-        let items = selectedCleanupItems
+        let scope = pendingReviewScope
+        let items = cleanupItems(in: scope)
         guard !items.isEmpty else { return }
 
         isCleaning = true
@@ -251,8 +401,7 @@ final class AppViewModel {
             isCleaning = false
             showsCleanupReview = false
             cleanupResult = result
-            selectedCleanupItemIDs.removeAll()
-            selectedDownloadFileIDs.removeAll()
+            clearSelection(in: scope)
             cleanupTask = nil
 
             if settings.privacy.keepLocalCleanupHistory, !result.cleanedItems.isEmpty {
@@ -266,67 +415,84 @@ final class AppViewModel {
         }
     }
 
+    /// Clears only the selections a cleanup covered; other screens keep theirs.
+    private func clearSelection(in scope: CleanupScope) {
+        switch scope {
+        case let .locations(locations):
+            let covered = Set(
+                categories.filter { locations.contains($0.location) }.flatMap(\.items).map(\.id)
+            )
+            selectedCleanupItemIDs.subtract(covered)
+        case .downloads:
+            selectedDownloadFileIDs.removeAll()
+        }
+    }
+
     func dismissCleanupResult() {
         cleanupResult = nil
+        restoreSummary = nil
         downloadsAnalysis = nil
         startCleanupScan()
     }
 
     func startDownloadsAnalysis() {
-        beginAnalysis(.downloads) { [weak self] context in
-            guard let self else { return }
-            let result = try await DownloadsAnalyzer().scan(
-                context: context,
-                progress: analysisProgressHandler()
-            )
-            downloadsAnalysis = result
-            selectedDownloadFileIDs = result.defaultSelectedFileIDs
+        beginAnalysis(.downloads) { [weak self] context, progress in
+            let result = try await DownloadsAnalyzer().scan(context: context, progress: progress)
+            return {
+                self?.downloadsAnalysis = result
+                self?.selectedDownloadFileIDs = result.defaultSelectedFileIDs
+            }
         }
     }
 
     func startLargeFileAnalysis() {
         let threshold = largeFileThreshold
-        beginAnalysis(.largeFiles) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.largeFiles) { [weak self] context, progress in
             let result = try await LargeFileAnalyzer().scan(
                 threshold: threshold,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            largeFiles = result.files
-            selectedLargeFileID = nil
+            return {
+                self?.largeFiles = result.files
+                self?.selectedLargeFileID = nil
+            }
         }
     }
 
     func startFolderAnalysis() {
-        beginAnalysis(.folders) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.folders) { [weak self] context, progress in
             let result = try await LargeFolderAnalyzer().scan(
                 minimumRetainedFolderSize: 5 * 1_024 * 1_024,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            largeFolderRoot = result.root
+            return { self?.largeFolderRoot = result.root }
         }
     }
 
     func startDuplicateAnalysis() {
-        beginAnalysis(.duplicates) { [weak self] context in
-            guard let self else { return }
+        beginAnalysis(.duplicates) { [weak self] context, progress in
             let result = try await DuplicateAnalyzer().scan(
                 minimumFileSize: 1 * 1_024 * 1_024,
                 context: context,
-                progress: analysisProgressHandler()
+                progress: progress
             )
-            duplicateGroups = result.groups
-            selectedDuplicateFileIDs = result.groups.reduce(into: Set<UUID>()) { selection, group in
-                selection.formUnion(DuplicateSelection.defaultSelectedFileIDs(in: group))
+            return {
+                self?.duplicateGroups = result.groups
+                self?.selectedDuplicateFileIDs = result.groups.reduce(into: Set<UUID>()) { selection, group in
+                    selection.formUnion(DuplicateSelection.defaultSelectedFileIDs(in: group))
+                }
             }
         }
     }
 
     func cancelAnalysis() {
-        analysisTask?.cancel()
+        analysisGeneration += 1
+        if let task = analysisTask {
+            task.cancel()
+            retiredAnalysisTask = task
+        }
         analysisTask = nil
         analysisActivity = nil
         analysisProgress = nil
@@ -341,7 +507,8 @@ final class AppViewModel {
     }
 
     func quickLook(_ url: URL) {
-        _ = finderService.quickLook(url)
+        guard url.isFileURL else { return }
+        quickLookURL = url.standardizedFileURL
     }
 
     func quickLookSelectedFile() {
@@ -356,11 +523,138 @@ final class AppViewModel {
 
     func clearError() { errorMessage = nil }
 
-    private func beginAnalysis(
+    // MARK: - Unavailable simulators
+
+    func checkUnavailableSimulators() {
+        guard simulatorCheck != .checking, simulatorCheck != .deleting else { return }
+        simulatorCheck = .checking
+        let service = simulatorService
+        Task { [weak self] in
+            do {
+                let devices = try await service.unavailableSimulators()
+                self?.simulatorCheck = .found(devices)
+            } catch {
+                self?.simulatorCheck = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Runs `xcrun simctl delete unavailable`, then checks again.
+    func deleteUnavailableSimulators() {
+        guard case let .found(devices) = simulatorCheck, !devices.isEmpty else { return }
+        simulatorCheck = .deleting
+        let service = simulatorService
+        Task { [weak self] in
+            do {
+                try await service.deleteUnavailableSimulators()
+                self?.simulatorCheck = .notChecked
+                self?.checkUnavailableSimulators()
+            } catch {
+                self?.simulatorCheck = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Waits until a simulator check or deletion settles. Used by tests.
+    func waitForSimulatorCheck() async {
+        while simulatorCheck == .checking || simulatorCheck == .deleting {
+            await Task.yield()
+        }
+    }
+
+    // MARK: - Undo and Put Back
+
+    /// Moves the items the last cleanup put in the Trash back where they were.
+    func undoLastCleanup() {
+        guard let items = cleanupResult?.trashedItems, !items.isEmpty else { return }
+        restore(items)
+    }
+
+    /// Puts back the items a past cleanup moved to the Trash.
+    func putBack(_ entry: CleanupHistoryEntry) {
+        guard !entry.trashedItems.isEmpty else { return }
+        restore(entry.trashedItems, showsAlert: true)
+    }
+
+    private func restore(_ items: [TrashedItem], showsAlert: Bool = false) {
+        Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                TrashRestorer().restore(items)
+            }.value
+            guard let self else { return }
+            let summary = Self.restoreSummary(outcome)
+            restoreSummary = summary
+            if showsAlert { errorMessage = summary }
+        }
+    }
+
+    nonisolated static func restoreSummary(_ outcome: TrashRestorer.Outcome) -> String {
+        var parts: [String] = []
+        if !outcome.restored.isEmpty {
+            parts.append("Put back \(outcome.restored.count) item\(outcome.restored.count == 1 ? "" : "s").")
+        }
+        if !outcome.notRestored.isEmpty {
+            let details = outcome.notRestored.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
+            parts.append("\(outcome.notRestored.count) item\(outcome.notRestored.count == 1 ? " was" : "s were") left in the Trash.\n\(details)")
+        }
+        return parts.isEmpty ? "Nothing to put back." : parts.joined(separator: " ")
+    }
+
+    // MARK: - History management
+
+    func deleteHistoryEntry(_ id: CleanupHistoryEntry.ID) {
+        do {
+            try history.remove(id: id)
+        } catch {
+            errorMessage = "The history entry could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
+    func clearHistory() {
+        do {
+            try history.clear()
+        } catch {
+            errorMessage = "Cleanup history could not be cleared: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteHistoryFile() {
+        do {
+            try history.deleteHistoryFile()
+        } catch {
+            errorMessage = "Cleanup history could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Test support
+
+    /// Waits for the current cleanup scan to finish. Used by tests.
+    func waitForScan() async {
+        await retiredScanTask?.value
+        await cleanupScanTask?.value
+    }
+
+    /// Waits for the current analysis, and any cancelled one, to finish. Used by tests.
+    func waitForAnalysis() async {
+        await retiredAnalysisTask?.value
+        await analysisTask?.value
+    }
+
+    /// Waits for the current cleanup to finish. Used by tests.
+    func waitForCleanup() async {
+        await cleanupTask?.value
+    }
+
+    /// Runs one analysis at a time. `operation` returns a closure that publishes its results;
+    /// it only runs if this analysis is still the current one, so a cancelled or replaced
+    /// analysis never overwrites newer results.
+    func beginAnalysis(
         _ activity: AnalysisActivity,
-        operation: @escaping @MainActor (ScanContext) async throws -> Void
+        operation: @escaping @MainActor (ScanContext, @escaping ScanProgressHandler) async throws
+            -> (@MainActor () -> Void)
     ) {
         cancelAnalysis()
+        let generation = analysisGeneration
         analysisActivity = activity
         analysisProgress = ScanProgress(
             phase: .preparing,
@@ -372,25 +666,37 @@ final class AppViewModel {
             totalProviders: 0
         )
 
+        let progress = analysisProgressHandler(generation: generation)
         analysisTask = Task { [weak self] in
             guard let self else { return }
+            let signpost = Log.signposter.beginInterval(
+                "Analysis",
+                id: Log.signposter.makeSignpostID(),
+                "\(activity.rawValue, privacy: .public)"
+            )
+            defer { Log.signposter.endInterval("Analysis", signpost) }
             do {
-                try await operation(makeScanContext())
+                let publish = try await operation(makeScanContext(), progress)
+                guard generation == analysisGeneration else { return }
+                publish()
             } catch is CancellationError {
                 // Cancellation is an expected user action.
             } catch {
+                guard generation == analysisGeneration else { return }
                 errorMessage = error.localizedDescription
             }
+            guard generation == analysisGeneration else { return }
             analysisTask = nil
             analysisActivity = nil
             analysisProgress = nil
         }
     }
 
-    private func analysisProgressHandler() -> ScanProgressHandler {
+    private func analysisProgressHandler(generation: Int) -> ScanProgressHandler {
         { [weak self] update in
             await MainActor.run {
-                self?.analysisProgress = update
+                guard let self, generation == self.analysisGeneration else { return }
+                self.analysisProgress = update
             }
         }
     }
@@ -410,25 +716,75 @@ final class AppViewModel {
             excludeCloudPlaceholders: settings.exclusions.excludeCloudPlaceholders,
             excludePhotoLibraries: settings.exclusions.excludePhotoLibraries,
             excludeTimeMachineBackups: settings.exclusions.excludeTimeMachineBackups,
-            excludePackageContents: settings.exclusions.excludePackageContents
+            excludePackageContents: settings.exclusions.excludePackageContents,
+            snapshots: snapshots
         )
     }
 
     private func applyCleanupProgress(
         _ update: ScanProgress,
-        priorFiles: Int,
-        priorBytes: Int64,
-        completedProviders: Int,
+        providerID: String,
+        generation: Int,
         totalProviders: Int
     ) {
-        guard cleanupScanTask != nil else { return }
+        guard generation == scanGeneration, cleanupScanTask != nil else { return }
+        inFlightProgress[providerID] = update
         cleanupScanProgress = ScanProgress(
             phase: update.phase,
             location: update.location,
             currentPath: update.currentPath,
-            filesAnalyzed: priorFiles + update.filesAnalyzed,
-            bytesFound: addingClamped(priorBytes, update.bytesFound),
-            completedProviders: completedProviders,
+            filesAnalyzed: accumulatedScanFiles
+                + inFlightProgress.values.reduce(0) { $0 + $1.filesAnalyzed },
+            bytesFound: inFlightProgress.values.reduce(accumulatedScanBytes) {
+                addingClamped($0, $1.bytesFound)
+            },
+            completedProviders: completedProviderCount,
+            totalProviders: totalProviders
+        )
+    }
+
+    /// Adds one provider's finished result to the scan, in category order.
+    private func publish(
+        _ result: ProviderScanResult,
+        from provider: any CleanupProvider,
+        plan: ScanPlan,
+        totalProviders: Int,
+        runningApps: [RunningApp]
+    ) {
+        inFlightProgress[provider.id] = nil
+        let filteredItems = Self.removeProviderOverlaps(
+            result.items,
+            ownerProviderID: provider.id,
+            plan: plan
+        )
+        let category = CleanupCategory(
+            location: result.location,
+            items: filteredItems,
+            issues: result.issues,
+            scannedAt: Date()
+        )
+        categories.append(category)
+        categories.sort { locationOrder($0.location) < locationOrder($1.location) }
+
+        let inUse = RunningAppMatcher.inUseItems(in: [category], running: runningApps)
+        inUseItemNames.merge(inUse) { first, _ in first }
+        for item in filteredItems
+        where item.isSelectedByDefault && item.isDeletable && inUse[item.id] == nil {
+            selectedCleanupItemIDs.insert(item.id)
+        }
+        accumulatedScanFiles += category.fileCount
+        accumulatedScanBytes = addingClamped(accumulatedScanBytes, category.totalSize)
+        completedProviderCount += 1
+        cleanupScanProgress = ScanProgress(
+            phase: .enumerating,
+            location: provider.location,
+            currentPath: plan.roots(of: provider.id).first?.path ?? "",
+            filesAnalyzed: accumulatedScanFiles
+                + inFlightProgress.values.reduce(0) { $0 + $1.filesAnalyzed },
+            bytesFound: inFlightProgress.values.reduce(accumulatedScanBytes) {
+                addingClamped($0, $1.bytesFound)
+            },
+            completedProviders: completedProviderCount,
             totalProviders: totalProviders
         )
     }
@@ -446,28 +802,62 @@ final class AppViewModel {
         }
     }
 
-    private func removeProviderOverlaps(
+    /// Each provider's roots, evaluated once per scan.
+    struct ScanPlan: Sendable {
+        let rootsByProvider: [String: [URL]]
+
+        func roots(of providerID: String) -> [URL] {
+            rootsByProvider[providerID] ?? []
+        }
+    }
+
+    nonisolated static func makeScanPlan(for providers: [any CleanupProvider]) async -> ScanPlan {
+        await Task.detached(priority: .utility) {
+            #if DEBUG
+            dispatchPrecondition(condition: .notOnQueue(.main))
+            #endif
+            var roots: [String: [URL]] = [:]
+            for provider in providers {
+                roots[provider.id, default: []]
+                    .append(contentsOf: provider.allowedRoots.map(\.standardizedFileURL))
+            }
+            return ScanPlan(rootsByProvider: roots)
+        }.value
+    }
+
+    /// Drops items that are another provider's root, or that contain one, so the same data is
+    /// never listed by two categories.
+    static func removeProviderOverlaps(
         _ items: [CleanupItem],
-        ownerProviderID: String
+        ownerProviderID: String,
+        plan: ScanPlan
     ) -> [CleanupItem] {
-        let otherRoots = providers
-            .filter { $0.id != ownerProviderID }
-            .flatMap(\.allowedRoots)
-            .map(\.standardizedFileURL)
+        let otherRoots = plan.rootsByProvider
+            .filter { $0.key != ownerProviderID }
+            .flatMap(\.value)
 
         return items.filter { item in
             let candidate = item.url.standardizedFileURL
             return !otherRoots.contains { root in
-                candidate == root || isStrictAncestor(candidate, of: root)
+                candidate == root || root.isStrictDescendant(of: candidate)
             }
         }
     }
 
-    private func isStrictAncestor(_ candidate: URL, of descendant: URL) -> Bool {
-        let lhs = candidate.pathComponents
-        let rhs = descendant.pathComponents
-        guard lhs.count < rhs.count else { return false }
-        return Array(rhs.prefix(lhs.count)) == lhs
+    private func rebuildDownloadCleanupItems() {
+        snapshots.replace(providerID: DownloadsProvider.providerID, snapshots: [:])
+        downloadCleanupItems = [:]
+        downloadsVisibleFileIDs = nil
+        guard let downloadsAnalysis,
+              let provider = providers.first(where: { $0.id == DownloadsProvider.providerID })
+                as? DownloadsProvider else {
+            return
+        }
+        for file in downloadsAnalysis.allFiles {
+            if let item = provider.cleanupItem(for: file, registry: snapshots) {
+                downloadCleanupItems[file.id] = item
+            }
+        }
     }
 
     private func locationOrder(_ location: CleanupLocation) -> Int {

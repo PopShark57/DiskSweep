@@ -154,6 +154,33 @@ final class SafetyValidatorTests: XCTestCase {
         }
     }
 
+    /// 1.1 negative test: a folder whose name only extends the approved root's name is outside
+    /// that root, so a shared string prefix can't widen the allowlist.
+    func testRejectsSiblingThatSharesApprovedRootNamePrefix() throws {
+        let sibling = homeURL.appendingPathComponent("Library/CachesBackup", isDirectory: true)
+        let file = try makeFile(at: sibling.appendingPathComponent("keep.db"))
+
+        XCTAssertThrowsError(try validator.validate(file, allowedRoots: [cacheRoot])) {
+            guard case SafetyValidationError.outsideApprovedRoots = $0 else {
+                return XCTFail("Unexpected error: \($0)")
+            }
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    /// 1.1 negative test: protected home folders are matched case-insensitively, so a
+    /// differently cased spelling of Documents can't be approved as a cleanup root.
+    func testRejectsProtectedFolderSpelledWithDifferentCase() throws {
+        let documents = homeURL.appendingPathComponent("documents", isDirectory: true)
+        let file = try makeFile(at: documents.appendingPathComponent("important.txt"))
+
+        XCTAssertThrowsError(try validator.validate(file, allowedRoots: [documents])) {
+            guard case SafetyValidationError.invalidApprovedRoot = $0 else {
+                return XCTFail("Unexpected error: \($0)")
+            }
+        }
+    }
+
     func testRejectsPersistentApplicationSupportButAllowsSpecificCacheRoot() throws {
         let applicationSupport = homeURL.appendingPathComponent(
             "Library/Application Support/Example/Default",

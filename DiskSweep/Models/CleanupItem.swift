@@ -23,6 +23,9 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
     let detail: String?
     let isSelectedByDefault: Bool
     let isDeletable: Bool
+    /// Why a non-deletable item can't be cleaned, shown under the item. `nil` for deletable
+    /// items.
+    let unavailableReason: String?
     let children: [CleanupItem]
 
     init(
@@ -40,6 +43,7 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
         detail: String? = nil,
         isSelectedByDefault: Bool? = nil,
         isDeletable: Bool = true,
+        unavailableReason: String? = nil,
         children: [CleanupItem] = []
     ) {
         self.id = id
@@ -56,6 +60,7 @@ struct CleanupItem: Identifiable, Codable, Hashable, Sendable {
         self.detail = detail
         self.isSelectedByDefault = isSelectedByDefault ?? risk.isSelectedByDefault
         self.isDeletable = isDeletable
+        self.unavailableReason = isDeletable ? nil : unavailableReason
         self.children = children
     }
 }

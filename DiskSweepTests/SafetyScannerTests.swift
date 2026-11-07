@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class SafetyScannerTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -97,7 +98,7 @@ final class SafetyScannerTests: XCTestCase {
             homeDirectory: home,
             minimumAge: 30 * 86_400
         ).scan(
-            context: ScanContext(homeDirectory: home, now: now),
+            context: ScanContext(homeDirectory: home, now: now, snapshots: snapshots),
             progress: { update in
                 guard update.phase == .enumerating else { return }
                 try? FileManager.default.setAttributes(
@@ -134,7 +135,7 @@ final class SafetyScannerTests: XCTestCase {
             providerID: "partial-directory-test",
             location: .temporaryFiles,
             roots: [root],
-            context: ScanContext(exclusions: [excludedDirectory]),
+            context: ScanContext(exclusions: [excludedDirectory], snapshots: snapshots),
             progress: { _ in },
             forceDefaultSelection: false
         )
@@ -145,6 +146,32 @@ final class SafetyScannerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: included.path))
         XCTAssertGreaterThan(result.category.inspectedSize, 0)
         XCTAssertEqual(result.category.totalSize, 0)
+    }
+
+    /// 3.2: the reason an item can't be cleaned is its own field, not appended to the
+    /// category explanation, and deletable items have none.
+    func testNondeletableItemsCarryAnUnavailableReason() async throws {
+        let excludedDirectory = root.appendingPathComponent("Partial/Preserve", isDirectory: true)
+        try writeFile(relativePath: "Partial/Preserve/important.cache")
+        try writeFile(relativePath: "Plain/disposable.cache")
+
+        let result = await ProviderSupport.scanChildren(
+            providerID: "reason-test",
+            location: .temporaryFiles,
+            roots: [root],
+            context: ScanContext(exclusions: [excludedDirectory], snapshots: snapshots),
+            progress: { _ in },
+            forceDefaultSelection: false
+        )
+
+        let partial = try XCTUnwrap(result.items.first { $0.url.lastPathComponent == "Partial" })
+        XCTAssertFalse(partial.isDeletable)
+        XCTAssertEqual(partial.explanation, CleanupLocation.temporaryFiles.explanation)
+        XCTAssertTrue(partial.unavailableReason?.contains("excluded or uninspected content") == true)
+
+        let plain = try XCTUnwrap(result.items.first { $0.url.lastPathComponent == "Plain" })
+        XCTAssertTrue(plain.isDeletable)
+        XCTAssertNil(plain.unavailableReason)
     }
 
     func testXcodeArchivesProviderEmitsIndividualArchivesNotDateContainers() async throws {
@@ -168,7 +195,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await XcodeArchivesProvider(homeDirectory: home).scan(
-            context: ScanContext(homeDirectory: home),
+            context: ScanContext(homeDirectory: home, snapshots: snapshots),
             progress: { _ in }
         )
 
@@ -191,9 +218,10 @@ final class SafetyScannerTests: XCTestCase {
         let finalBatch = expectation(description: "temporary scan reached final batch")
         finalBatch.assertForOverFulfill = false
 
+        let context = ScanContext(now: now, snapshots: snapshots)
         let task = Task {
             await provider.scan(
-                context: ScanContext(now: now),
+                context: context,
                 progress: { update in
                     guard update.phase == .enumerating,
                           update.filesAnalyzed > 0 else { return }
@@ -221,7 +249,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await provider.scan(
-            context: ScanContext(now: now),
+            context: ScanContext(now: now, snapshots: snapshots),
             progress: { update in
                 guard update.phase == .enumerating else { return }
                 try? FileManager.default.setAttributes(
@@ -256,7 +284,7 @@ final class SafetyScannerTests: XCTestCase {
         )
 
         let result = await provider.scan(
-            context: ScanContext(),
+            context: ScanContext(snapshots: snapshots),
             progress: { _ in }
         )
 
@@ -273,12 +301,13 @@ final class SafetyScannerTests: XCTestCase {
         let firstCandidate = expectation(description: "provider emitted progress")
         firstCandidate.assertForOverFulfill = false
 
+        let context = ScanContext(snapshots: snapshots)
         let task = Task {
             await ProviderSupport.scanChildren(
                 providerID: "cancelled-provider-test",
                 location: .temporaryFiles,
                 roots: [scanRoot],
-                context: ScanContext(),
+                context: context,
                 progress: { update in
                     guard update.phase == .enumerating else { return }
                     firstCandidate.fulfill()
@@ -293,6 +322,55 @@ final class SafetyScannerTests: XCTestCase {
 
         XCTAssertTrue(result.items.isEmpty)
         XCTAssertTrue(result.issues.contains { $0.kind == .cancelled })
+    }
+
+    /// 1.1 negative test: an exclusion root excludes its own descendants (so a folder that
+    /// contains it is never treated as fully inspected), and a sibling that only shares a
+    /// string prefix is not mistaken for excluded content.
+    func testExclusionRootMatchesWholePathComponentsOnly() async throws {
+        let excluded = root.appendingPathComponent("Keep", isDirectory: true)
+        try writeFile(relativePath: "Keep/secret.bin")
+        try writeFile(relativePath: "Keeper/visible.bin")
+
+        let result = try await FileSystemScanner().scan(
+            root: root,
+            options: FileSystemScanOptions(exclusionURLs: [excluded])
+        )
+
+        XCTAssertEqual(result.items.map(\.url.lastPathComponent), ["visible.bin"])
+        XCTAssertEqual(result.excludedURLs.map(\.lastPathComponent), ["Keep"])
+
+        let sized = try await DirectorySizer().size(of: root, exclusions: [excluded])
+        XCTAssertFalse(sized.excludedURLs.isEmpty, "A folder containing an exclusion must report it")
+    }
+
+    /// 5.2: an exclusion named through a symlinked path still excludes the real folder, and
+    /// a symlink whose target is excluded is still reported as excluded content.
+    func testExclusionGivenThroughSymlinkStillExcludes() async throws {
+        try writeFile(relativePath: "Scan/Keep/secret.bin")
+        try writeFile(relativePath: "Scan/Other/visible.bin")
+        let linkToScan = root.appendingPathComponent("LinkToScan")
+        try FileManager.default.createSymbolicLink(
+            at: linkToScan,
+            withDestinationURL: root.appendingPathComponent("Scan")
+        )
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("Scan/Other/pointer"),
+            withDestinationURL: root.appendingPathComponent("Scan/Keep")
+        )
+        let exclusionViaLink = linkToScan.appendingPathComponent("Keep", isDirectory: true)
+
+        let sized = try await DirectorySizer().size(
+            of: root.appendingPathComponent("Scan"),
+            exclusions: [exclusionViaLink],
+            includeHiddenFiles: true,
+            skipPackages: false
+        )
+        XCTAssertEqual(sized.fileCount, 1, "Only visible.bin is counted")
+        XCTAssertEqual(
+            Set(sized.excludedURLs.map(\.lastPathComponent)),
+            ["Keep", "pointer"]
+        )
     }
 
     @discardableResult

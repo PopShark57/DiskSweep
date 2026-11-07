@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class AnalyzerLargeFileAndFolderTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     func testLargeFileScanHonorsThresholdHiddenFilesAndExclusions() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("visible-large.bin", data: Data(repeating: 1, count: 220))
@@ -16,7 +17,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let hiddenOff = ScanContext(
             homeDirectory: temporary.url,
             exclusions: [excluded],
-            showHiddenFiles: false
+            showHiddenFiles: false,
+            snapshots: snapshots
         )
         let analyzer = LargeFileAnalyzer(progressBatchSize: 1)
         let firstResult = try await analyzer.scan(
@@ -31,7 +33,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let hiddenOn = ScanContext(
             homeDirectory: temporary.url,
             exclusions: [excluded],
-            showHiddenFiles: true
+            showHiddenFiles: true,
+            snapshots: snapshots
         )
         let secondResult = try await analyzer.scan(
             root: temporary.url,
@@ -61,7 +64,8 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
 
         let context = ScanContext(
             homeDirectory: temporary.url,
-            showHiddenFiles: true
+            showHiddenFiles: true,
+            snapshots: snapshots
         )
         let result = try await LargeFolderAnalyzer(progressBatchSize: 1).scan(
             root: temporary.url,
@@ -90,7 +94,7 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("Large/file.bin", data: Data(repeating: 1, count: 40))
         try temporary.file("Small/file.bin", data: Data(repeating: 2, count: 5))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await LargeFolderAnalyzer().scan(
             minimumRetainedFolderSize: 10,
@@ -105,12 +109,110 @@ final class AnalyzerLargeFileAndFolderTests: XCTestCase {
     func testDiskUsageAnalyzerAnchorsTreeAtHomeDirectory() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("Documents/file.txt", data: Data(repeating: 7, count: 12))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DiskUsageAnalyzer().scanHomeDirectory(context: context)
 
         XCTAssertEqual(result.root.url.standardizedFileURL, temporary.url.standardizedFileURL)
         XCTAssertEqual(result.root.size, 12)
         XCTAssertEqual(result.root.children.first?.name, "Documents")
+    }
+
+    /// D11: the default threshold must be one of the presets, so the picker starts with a
+    /// valid selection and no custom stepper.
+    func testDefaultThresholdIsADecimalPreset() {
+        XCTAssertEqual(LargeFileAnalyzer.defaultThreshold, 100_000_000)
+        XCTAssertTrue(
+            LargeFileAnalyzer.thresholdPresets.contains { $0.bytes == LargeFileAnalyzer.defaultThreshold }
+        )
+    }
+
+    // MARK: - Packages as opaque items (D3)
+
+    func testPackageCountsTowardFolderTotalAsOneLeaf() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Media/Show.fcpbundle/Original Media/clip.mov", data: Data(repeating: 7, count: 5_000_000))
+        try temporary.file("Media/loose.bin", data: Data(repeating: 1, count: 10_000))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await LargeFolderAnalyzer().scan(root: temporary.url, context: context)
+
+        XCTAssertGreaterThanOrEqual(result.root.size, 5_000_000)
+        let media = try XCTUnwrap(result.root.children.first { $0.name == "Media" })
+        XCTAssertGreaterThanOrEqual(media.size, 5_010_000)
+        let bundle = try XCTUnwrap(media.children.first { $0.name == "Show.fcpbundle" })
+        XCTAssertTrue(bundle.isPackage)
+        XCTAssertTrue(bundle.children.isEmpty, "A package is a leaf")
+        XCTAssertGreaterThanOrEqual(bundle.size, 5_000_000)
+    }
+
+    func testLargeFilesListsPackageAsOneItemNotItsContents() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Apps/Tool.app/Contents/Resources/big.dat", data: Data(repeating: 3, count: 2_000_000))
+        try temporary.file("Pictures.photoslibrary/original.jpg", data: Data(repeating: 6, count: 2_000_000))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await LargeFileAnalyzer().scan(
+            root: temporary.url,
+            threshold: 1_000_000,
+            context: context
+        )
+
+        XCTAssertEqual(result.files.map(\.name), ["Tool.app"])
+        let item = try XCTUnwrap(result.files.first)
+        XCTAssertTrue(item.isPackage)
+        XCTAssertEqual(item.kind, .directory)
+        XCTAssertGreaterThanOrEqual(item.size, 2_000_000)
+    }
+
+    func testPackagesAreListedFileByFileWhenTheSettingIsOff() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        try temporary.file("Apps/Tool.app/Contents/Resources/big.dat", data: Data(repeating: 3, count: 2_000_000))
+        let context = ScanContext(
+            homeDirectory: temporary.url,
+            showHiddenFiles: true,
+            excludePackageContents: false,
+            snapshots: snapshots
+        )
+
+        let result = try await LargeFileAnalyzer().scan(root: temporary.url, threshold: 1_000_000, context: context)
+        XCTAssertEqual(result.files.map(\.name), ["big.dat"])
+    }
+
+    func testDuplicatesStillSkipPackages() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 9, count: 8_192)
+        try temporary.file("A/Tool.app/Contents/Resources/x.dat", data: data)
+        try temporary.file("B/Tool.app/Contents/Resources/x.dat", data: data)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+        XCTAssertTrue(result.groups.isEmpty)
+    }
+
+    /// M5: the "Files in this folder" row makes the rows add up to the folder's total.
+    func testUnlistedSizeMakesRowsAddUpToTheFolderTotal() {
+        let child = DirectoryNode(url: URL(fileURLWithPath: "/x/a"), size: 600, fileCount: 2)
+        let other = DirectoryNode(url: URL(fileURLWithPath: "/x/b"), size: 300, fileCount: 1)
+        let folder = DirectoryNode(url: URL(fileURLWithPath: "/x"), size: 1_000, fileCount: 5, children: [child, other])
+        XCTAssertEqual(folder.unlistedSize, 100)
+        XCTAssertEqual(folder.children.reduce(0) { $0 + $1.size } + folder.unlistedSize, folder.size)
+        XCTAssertEqual(DirectoryNode(url: URL(fileURLWithPath: "/y"), size: 5, fileCount: 1).unlistedSize, 5)
+    }
+
+    /// F10: chart slices are the largest folders, the rest merged, and the unlisted space,
+    /// and they add up to the folder total.
+    func testDiskUsageSlicesAddUpToTheFolderTotal() {
+        let children = (1...10).map {
+            DirectoryNode(url: URL(fileURLWithPath: "/x/f\($0)"), size: Int64($0 * 100), fileCount: 1)
+        }
+        let folder = DirectoryNode(url: URL(fileURLWithPath: "/x"), size: 6_000, fileCount: 10, children: children)
+
+        let slices = DiskUsageSlice.slices(for: folder, maximumFolders: 3)
+
+        XCTAssertEqual(slices.map(\.name), ["f10", "f9", "f8", "Other folders", "Files in this folder"])
+        XCTAssertEqual(slices.first { $0.kind == .otherFolders }?.size, 2_800)
+        XCTAssertEqual(slices.first { $0.kind == .filesInFolder }?.size, 500)
+        XCTAssertEqual(slices.reduce(0) { $0 + $1.size }, folder.size)
     }
 }

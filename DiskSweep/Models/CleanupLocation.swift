@@ -22,7 +22,10 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
 
     var id: String { rawValue }
 
-    var name: String {
+    /// The localized display name.
+    var name: String { String(localized: nameResource) }
+
+    var nameResource: LocalizedStringResource {
         switch self {
         case .userCaches: "User Caches"
         case .userLogs: "User Logs"
@@ -45,7 +48,10 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         }
     }
 
-    var explanation: String {
+    /// The localized one-sentence explanation.
+    var explanation: String { String(localized: explanationResource) }
+
+    var explanationResource: LocalizedStringResource {
         switch self {
         case .userCaches:
             "Disposable cache folders created by apps in your user Library."
@@ -133,6 +139,57 @@ enum CleanupLocation: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             true
         default:
             false
+        }
+    }
+
+    /// Folder names that DiskSweep's safety policy normally refuses inside a cleanup target
+    /// (see `FileSystemSafetyPolicy.excludedNames`) but that are expected inside this
+    /// location's items. The scan-time sizer and the cleanup engine both read this, so an item
+    /// that is deletable at scan time is also accepted at cleanup time.
+    ///
+    /// The `.git` rule protects user repositories. A repository can't legitimately live inside
+    /// DerivedData (Xcode clones Swift package dependencies into `SourcePackages/checkouts`)
+    /// or inside a package manager's checkout cache (Cargo Git checkouts, CocoaPods spec
+    /// repos), so those locations accept `.git`. `node_modules` stays refused everywhere
+    /// except project artifacts and old IDE versions.
+    var permittedNestedNames: Set<String> {
+        switch self {
+        case .xcodeDerivedData, .developerToolCaches:
+            [".git"]
+        case .projectArtifacts:
+            ["node_modules"]
+        case .staleIDEVersions:
+            ["node_modules", ".git"]
+        default:
+            []
+        }
+    }
+
+    enum IdentityMatching: Sendable {
+        /// The item must be exactly as scanned: device, inode, size, allocation, kind, and
+        /// modification and change times.
+        case strict
+        /// The item must be the same filesystem object (device, inode, and kind). Its
+        /// timestamps may change, as an active cache folder's do whenever its app adds an
+        /// entry.
+        case stableObject
+    }
+
+    /// How closely an item must match its scan-time identity before cleanup.
+    ///
+    /// Regenerable `.safe` caches under fixed roots use `.stableObject`, so a cache that a
+    /// running app keeps writing to can still be cleaned. Replacing the folder with another
+    /// one (a different inode) is still refused, the roots are still allowlisted, and the
+    /// engine still walks every descendant right before removal. Everything else, including
+    /// user files, Downloads, logs, and rule-based locations, keeps `.strict`. The engine's
+    /// final `revalidate` right before mutation is always strict.
+    var identityMatching: IdentityMatching {
+        switch self {
+        case .userCaches, .applicationCaches, .browserCaches, .electronAppCaches,
+             .xcodeDerivedData, .swiftPackageCaches, .homebrewCache, .developerToolCaches:
+            .stableObject
+        default:
+            .strict
         }
     }
 

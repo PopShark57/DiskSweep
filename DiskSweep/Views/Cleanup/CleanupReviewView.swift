@@ -1,5 +1,32 @@
 import SwiftUI
 
+/// Pure decisions behind the review sheet, kept out of the view so they can be tested.
+enum CleanupReviewModel {
+    /// Developer folders that may hold something irreplaceable, such as old IDE settings or
+    /// hand-installed packages, and so default to the Trash.
+    static func includesTrashFirstFolders(_ items: [CleanupItem]) -> Bool {
+        items.contains { $0.location.defaultsToTrash && $0.location != .downloads }
+    }
+
+    /// The disposition the sheet starts on. Trash-first developer folders always start on
+    /// Move to Trash, whatever the user-file preference says; otherwise the preference wins.
+    /// How each item in a group will be removed, using the engine's own rule for the
+    /// disposition the sheet will send.
+    static func dispositions(
+        of items: [CleanupItem],
+        requested: CleanupDisposition
+    ) -> Set<CleanupDisposition> {
+        Set(items.map { CleanupEngine.disposition(for: $0, requested: requested) })
+    }
+
+    static func initialDisposition(
+        items: [CleanupItem],
+        preference: CleanupDisposition
+    ) -> CleanupDisposition {
+        includesTrashFirstFolders(items) ? .trash : preference
+    }
+}
+
 struct CleanupReviewView: View {
     let items: [CleanupItem]
     let isCleaning: Bool
@@ -17,7 +44,10 @@ struct CleanupReviewView: View {
         self.items = items
         self.isCleaning = isCleaning
         self.clean = clean
-        _userFileDisposition = State(initialValue: preferredUserFileDisposition)
+        _userFileDisposition = State(initialValue: CleanupReviewModel.initialDisposition(
+            items: items,
+            preference: preferredUserFileDisposition
+        ))
     }
 
     private var groups: [(location: CleanupLocation, items: [CleanupItem])] {
@@ -28,10 +58,8 @@ struct CleanupReviewView: View {
 
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     private var includesUserFiles: Bool { items.contains { $0.risk == .userFiles } }
-    /// Developer folders that may hold something irreplaceable, such as old IDE settings or
-    /// hand-installed packages, and so default to the Trash.
     private var includesTrashFirstFolders: Bool {
-        items.contains { $0.location.defaultsToTrash && $0.location != .downloads }
+        CleanupReviewModel.includesTrashFirstFolders(items)
     }
     private var includesTrash: Bool { items.contains { $0.location == .trash } }
 
@@ -66,24 +94,7 @@ struct CleanupReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(groups, id: \.location) { group in
-                        HStack(spacing: 12) {
-                            Image(systemName: group.location.symbolName)
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(.tint)
-                                .frame(width: 26)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(group.location.name)
-                                    .font(.headline)
-                                Text("\(group.items.reduce(0) { $0 + $1.fileCount }.formatted()) items")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(FileSizeFormatter.string(fromByteCount: group.items.reduce(0) { $0 + $1.size }))
-                                .font(.headline)
-                                .monospacedDigit()
-                        }
-                        .cardSurface(padding: 14)
+                        reviewGroup(group)
                     }
 
                     if includesUserFiles || includesTrashFirstFolders {
@@ -157,5 +168,84 @@ struct CleanupReviewView: View {
         }
         .frame(minWidth: 620, minHeight: 560)
         .interactiveDismissDisabled(isCleaning)
+    }
+
+    private func reviewGroup(
+        _ group: (location: CleanupLocation, items: [CleanupItem])
+    ) -> some View {
+        DisclosureGroup {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(group.items) { item in
+                    HStack(spacing: 10) {
+                        Image(systemName: item.kind == .directory ? "folder" : "doc")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.name)
+                                .lineLimit(1)
+                            Text(item.url.path(percentEncoded: false))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer(minLength: 8)
+                        Text(FileSizeFormatter.string(fromByteCount: item.size))
+                            .font(.callout)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                    .accessibilityElement(children: .combine)
+                    if item.id != group.items.last?.id { Divider() }
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: group.location.symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group.location.name)
+                        .font(.headline)
+                    HStack(spacing: 8) {
+                        Text("\(group.items.reduce(0) { $0 + $1.fileCount }.formatted()) items")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        DispositionBadge(dispositions: CleanupReviewModel.dispositions(
+                            of: group.items,
+                            requested: userFileDisposition
+                        ))
+                    }
+                }
+                Spacer()
+                Text(FileSizeFormatter.string(fromByteCount: group.items.reduce(0) { $0 + $1.size }))
+                    .font(.headline)
+                    .monospacedDigit()
+            }
+        }
+        .cardSurface(padding: 14)
+    }
+}
+
+/// Says how a group of items will be removed.
+private struct DispositionBadge: View {
+    let dispositions: Set<CleanupDisposition>
+
+    var body: some View {
+        let (text, symbol, tint): (String, String, Color) = switch dispositions {
+        case [.trash]: ("Moved to Trash", "trash", .secondary)
+        case [.permanent]: ("Deleted permanently", "trash.slash", .red)
+        default: ("Some moved to Trash, some deleted permanently", "trash", .orange)
+        }
+        Label(text, systemImage: symbol)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.12), in: Capsule())
+            .accessibilityLabel(text)
     }
 }

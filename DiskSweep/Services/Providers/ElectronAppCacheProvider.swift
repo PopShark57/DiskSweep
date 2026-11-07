@@ -95,6 +95,7 @@ struct ElectronAppCacheProvider: CleanupProvider {
         ElectronAppCacheRules.applicationDirectories(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

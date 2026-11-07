@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class DeveloperCleanupProvidersTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
     private var home: URL!
     private let now = Date()
@@ -197,6 +198,183 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
         XCTAssertTrue(exists("Library/Android/sdk/system-images/android-30/google_apis/x86"))
     }
 
+    // MARK: - Custom Android SDK and device folders (F7)
+
+    private func makeCustomSDK(_ relative: String = "Developer/android-sdk") throws -> URL {
+        try write("\(relative)/platform-tools/adb")
+        for image in ["android-30/google_apis/x86", "android-35/google_apis/arm64-v8a"] {
+            try write("\(relative)/system-images/\(image)/package.xml")
+            try write("\(relative)/system-images/\(image)/system.img", byteCount: 64)
+        }
+        return home.appendingPathComponent(relative, isDirectory: true)
+    }
+
+    func testCustomSDKAndDeviceFoldersAreUsedForScanAndRecheck() async throws {
+        let sdk = try makeCustomSDK()
+        try write(
+            "Devices/Pixel.avd/config.ini",
+            contents: "image.sysdir.1=system-images/android-35/google_apis/arm64-v8a/\n"
+        )
+        let devices = home.appendingPathComponent("Devices", isDirectory: true)
+        let provider = AndroidSystemImagesProvider(homeDirectory: home, sdkDirectory: sdk, avdDirectory: devices)
+
+        let scanned = await provider.scan(context: context) { _ in }
+        XCTAssertEqual(scanned.items.map(\.name), ["API 30 · google apis · x86"])
+        XCTAssertTrue(scanned.items.allSatisfy(\.isDeletable))
+
+        let result = await engine.clean(scanned.items, providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists("Developer/android-sdk/system-images/android-30/google_apis/x86"))
+        XCTAssertTrue(exists("Developer/android-sdk/system-images/android-35/google_apis/arm64-v8a"))
+    }
+
+    /// Negative: the custom device folder is also used for the recheck right before removal.
+    func testCustomSDKImageThatADeviceStartedUsingIsRefused() async throws {
+        let sdk = try makeCustomSDK()
+        let devices = home.appendingPathComponent("Devices", isDirectory: true)
+        try FileManager.default.createDirectory(at: devices, withIntermediateDirectories: true)
+        let provider = AndroidSystemImagesProvider(homeDirectory: home, sdkDirectory: sdk, avdDirectory: devices)
+        let scanned = await provider.scan(context: context) { _ in }
+        XCTAssertEqual(scanned.items.count, 2)
+
+        try write("Devices/Tablet.avd/config.ini", contents: "image.sysdir.1=system-images/android-30/google_apis/x86/\n")
+        let result = await engine.clean(scanned.items, providers: [provider], disposition: .permanent)
+
+        XCTAssertEqual(result.cleanedItems.count, 1)
+        XCTAssertTrue(exists("Developer/android-sdk/system-images/android-30/google_apis/x86"))
+    }
+
+    /// Negative: a custom root must be an SDK's system-images folder in an unprotected,
+    /// user-scoped place, and is only accepted for Android images.
+    func testValidatorAcceptsOnlyRealCustomSDKImageRoots() throws {
+        let sdk = try makeCustomSDK()
+        let images = sdk.appendingPathComponent("system-images", isDirectory: true)
+        XCTAssertNoThrow(try validator.preflightApprovedRoot(images, location: .androidSystemImages))
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(images, location: .userCaches))
+
+        try write("Notes/system-images/android-30/google_apis/x86/package.xml")
+        let lookalike = home.appendingPathComponent("Notes/system-images", isDirectory: true)
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(lookalike, location: .androidSystemImages))
+
+        _ = try makeCustomSDK("Documents/android-sdk")
+        let protected = home.appendingPathComponent("Documents/android-sdk/system-images", isDirectory: true)
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(protected, location: .androidSystemImages))
+
+        let sdkFolder = home.appendingPathComponent("Developer/android-sdk", isDirectory: true)
+        XCTAssertThrowsError(
+            try validator.preflightApprovedRoot(sdkFolder, location: .androidSystemImages),
+            "The SDK folder itself is never a cleanup root"
+        )
+    }
+
+    // MARK: - Nested .git in DerivedData and tool caches (D1)
+
+    func testDerivedDataWithSwiftPackageCheckoutIsDeletableAndCleaned() async throws {
+        let base = "Library/Developer/Xcode/DerivedData/App-abcdef"
+        try write("\(base)/Build/Products/Debug/App.app/Contents/MacOS/App", byteCount: 64)
+        try write("\(base)/SourcePackages/checkouts/Pkg/.git/HEAD", contents: "ref: refs/heads/main")
+        try write("\(base)/SourcePackages/checkouts/Pkg/Sources/Pkg.swift")
+
+        let provider = XcodeDerivedDataProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "App-abcdef" })
+        XCTAssertTrue(item.isDeletable, item.explanation)
+        XCTAssertTrue(item.isSelectedByDefault)
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists(base))
+        XCTAssertTrue(exists("Library/Developer/Xcode/DerivedData"))
+    }
+
+    func testCargoGitCheckoutIsDeletableReviewOnlyAndCleaned() async throws {
+        try write(".cargo/git/checkouts/foo-1234/abc1234/.git/HEAD", contents: "ref: refs/heads/main")
+        try write(".cargo/git/checkouts/foo-1234/abc1234/src/lib.rs")
+
+        let provider = DeveloperToolCacheProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "foo-1234" })
+        XCTAssertTrue(item.isDeletable, item.explanation)
+        XCTAssertFalse(item.isSelectedByDefault, "Cargo Git checkouts need review")
+        XCTAssertEqual(item.risk, .reviewRecommended)
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists(".cargo/git/checkouts/foo-1234"))
+    }
+
+    /// Negative: User Caches keeps refusing folders that contain a repository.
+    func testUserCacheFolderWithGitStaysRefused() async throws {
+        try write("Library/Caches/com.example/.git/HEAD", contents: "ref: refs/heads/main")
+        try write("Library/Caches/com.example/data.bin")
+
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "com.example" })
+        XCTAssertFalse(item.isDeletable)
+
+        try await assertEngineRefusesForgedDeletableCopy(of: item, provider: provider)
+        XCTAssertTrue(exists("Library/Caches/com.example/.git/HEAD"))
+    }
+
+    /// Negative: DerivedData accepts `.git` only; a `node_modules` inside is still refused.
+    func testDerivedDataFolderWithNodeModulesStaysRefused() async throws {
+        let base = "Library/Developer/Xcode/DerivedData/Web-abcdef"
+        try write("\(base)/Build/out.o")
+        try write("\(base)/SourcePackages/checkouts/Pkg/node_modules/left-pad/index.js")
+
+        let provider = XcodeDerivedDataProvider(homeDirectory: home)
+        let scanned = await provider.scan(context: context) { _ in }
+        let item = try XCTUnwrap(scanned.items.first { $0.url.lastPathComponent == "Web-abcdef" })
+        XCTAssertFalse(item.isDeletable)
+
+        try await assertEngineRefusesForgedDeletableCopy(of: item, provider: provider)
+        XCTAssertTrue(exists("\(base)/SourcePackages/checkouts/Pkg/node_modules/left-pad/index.js"))
+    }
+
+    /// Builds a deletable copy of a refused item with a valid scan snapshot, as if the scan had
+    /// been wrong, and checks that the engine's own content check still refuses it.
+    private func assertEngineRefusesForgedDeletableCopy(
+        of item: CleanupItem,
+        provider: any CleanupProvider,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let forged = CleanupItem(
+            providerID: item.providerID,
+            location: item.location,
+            name: item.name,
+            url: item.url,
+            size: item.size,
+            fileCount: item.fileCount,
+            kind: item.kind,
+            modifiedAt: item.modifiedAt,
+            risk: item.risk,
+            explanation: item.explanation,
+            isDeletable: true
+        )
+        snapshots.record(
+            providerID: item.providerID,
+            itemID: forged.id,
+            identity: try SafetyValidator.captureIdentity(at: item.url)
+        )
+        let result = await engine.clean([forged], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty, file: file, line: line)
+        XCTAssertEqual(result.failures.count, 1, file: file, line: line)
+        XCTAssertTrue(
+            result.failures.first?.reason.contains("excluded from cleanup") == true,
+            "Expected the content check to refuse it: \(result.failures.map(\.reason))",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: item.url.path),
+            "The refused folder must still exist",
+            file: file,
+            line: line
+        )
+    }
+
     // MARK: - Package manager caches
 
     func testFindsPackageManagerCachesAndReviewsUV() async throws {
@@ -222,6 +400,85 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
         XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
         XCTAssertFalse(exists(".npm/_cacache/content-v2"))
         XCTAssertTrue(exists(".npm/_logs/debug.log"))
+    }
+
+    // MARK: - Poetry (D9)
+
+    func testPoetryOffersOnlyCachesAndArtifactsNeverVirtualenvs() async throws {
+        try write("Library/Caches/pypoetry/cache/repositories/pypi/_http/a", byteCount: 32)
+        try write("Library/Caches/pypoetry/artifacts/ab/cd/pkg.whl", byteCount: 32)
+        try write("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py", byteCount: 64)
+        try write("Library/Caches/com.example.App/blob")
+
+        let userCaches = UserCacheProvider(homeDirectory: home)
+        let userItems = await userCaches.scan(context: context) { _ in }.items
+        XCTAssertFalse(userItems.contains { $0.url.path.contains("pypoetry") })
+        XCTAssertTrue(userItems.contains { $0.url.lastPathComponent == "com.example.App" })
+
+        let toolCaches = DeveloperToolCacheProvider(homeDirectory: home)
+        let toolItems = await toolCaches.scan(context: context) { _ in }.items
+        XCTAssertEqual(
+            Set(toolItems.map { $0.url.deletingLastPathComponent().lastPathComponent }),
+            ["cache", "artifacts"]
+        )
+        XCTAssertFalse(toolItems.contains { $0.url.path.contains("virtualenvs") })
+        XCTAssertTrue(toolItems.allSatisfy(\.isDeletable))
+    }
+
+    /// Negative: no authorization removes a Poetry virtual environment, even with a recorded
+    /// identity. Package Manager Caches doesn't cover it, and User Caches has no scan-time
+    /// snapshot for it because its scan never offers `pypoetry`.
+    func testEngineRefusesPoetryVirtualenvUnderEveryAuthorization() async throws {
+        try write("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py", byteCount: 64)
+        try write("Library/Caches/pypoetry/cache/repositories/pypi/_http/a")
+        try write("Library/Caches/pypoetry/artifacts/ab/pkg.whl")
+        let venv = home.appendingPathComponent("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12")
+        let providers: [any CleanupProvider] = [
+            UserCacheProvider(homeDirectory: home),
+            DeveloperToolCacheProvider(homeDirectory: home)
+        ]
+        // Scans first, as the app does, so each provider has recorded its own snapshots.
+        for provider in providers {
+            _ = await provider.scan(context: context) { _ in }
+        }
+
+        for provider in providers {
+            let forged = CleanupItem(
+                providerID: provider.id,
+                location: provider.location,
+                name: "proj-abc-py3.12",
+                url: venv,
+                size: 64,
+                kind: .directory,
+                risk: .safe,
+                explanation: "forged"
+            )
+            let result = await engine.clean([forged], providers: providers, disposition: .permanent)
+            XCTAssertTrue(result.cleanedItems.isEmpty, provider.id)
+            XCTAssertEqual(result.failures.count, 1, provider.id)
+        }
+
+        // Package Manager Caches must refuse it even when an identity is recorded.
+        let toolCaches = DeveloperToolCacheProvider(homeDirectory: home)
+        let withSnapshot = CleanupItem(
+            providerID: toolCaches.id,
+            location: toolCaches.location,
+            name: "proj-abc-py3.12",
+            url: venv,
+            size: 64,
+            kind: .directory,
+            risk: .safe,
+            explanation: "forged"
+        )
+        snapshots.record(
+            providerID: toolCaches.id,
+            itemID: withSnapshot.id,
+            identity: try SafetyValidator.captureIdentity(at: venv)
+        )
+        let result = await engine.clean([withSnapshot], providers: [toolCaches], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(result.failures.first?.reason.contains("outside this provider") == true)
+        XCTAssertTrue(exists("Library/Caches/pypoetry/virtualenvs/proj-abc-py3.12/lib/site.py"))
     }
 
     // MARK: - Electron app caches
@@ -322,7 +579,7 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
     // MARK: - Helpers
 
     private var context: ScanContext {
-        ScanContext(homeDirectory: home, now: now)
+        ScanContext(homeDirectory: home, now: now, snapshots: snapshots)
     }
 
     private var validator: SafetyValidator {
@@ -330,7 +587,7 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
     }
 
     private var engine: CleanupEngine {
-        CleanupEngine(safetyValidator: validator)
+        CleanupEngine(safetyValidator: validator, snapshots: snapshots)
     }
 
     private func makeIDEFolder(

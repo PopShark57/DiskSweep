@@ -7,6 +7,29 @@ struct DiskStatistics: Codable, Hashable, Sendable {
     let used: Int64
     let available: Int64
     var reclaimable: Int64
+    /// Free space without purgeable space (`volumeAvailableCapacityKey`). The system can
+    /// reclaim purgeable space at any moment, so this is the steadier value for measuring
+    /// what a cleanup freed. `available` (which includes purgeable space) stays the
+    /// user-facing figure.
+    let availableExcludingPurgeable: Int64
+
+    init(
+        volumeName: String,
+        mountURL: URL,
+        capacity: Int64,
+        used: Int64,
+        available: Int64,
+        reclaimable: Int64,
+        availableExcludingPurgeable: Int64? = nil
+    ) {
+        self.volumeName = volumeName
+        self.mountURL = mountURL
+        self.capacity = capacity
+        self.used = used
+        self.available = available
+        self.reclaimable = reclaimable
+        self.availableExcludingPurgeable = availableExcludingPurgeable ?? available
+    }
 
     static let unavailable = DiskStatistics(
         volumeName: "Macintosh HD",

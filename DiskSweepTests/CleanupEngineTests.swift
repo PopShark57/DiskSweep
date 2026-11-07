@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class CleanupEngineTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
 
     override func setUpWithError() throws {
@@ -146,7 +147,7 @@ final class CleanupEngineTests: XCTestCase {
 
         let provider = TestDirectoryProvider(root: root)
         let scan = await provider.scan(
-            context: ScanContext(exclusions: [excluded])
+            context: ScanContext(exclusions: [excluded], snapshots: snapshots)
         ) { _ in }
         let scannedItem = try XCTUnwrap(scan.items.first { $0.url == parent })
         XCTAssertFalse(scannedItem.isDeletable)
@@ -163,12 +164,39 @@ final class CleanupEngineTests: XCTestCase {
         XCTAssertEqual(result.failures.count, 1)
     }
 
+    /// 1.3 wiring test: a scan that recorded its identities in one registry can't be cleaned
+    /// by an engine that reads another. The engine refuses instead of skipping the check.
+    func testEngineWithDifferentRegistryRefusesScannedItems() async throws {
+        let directory = root.appendingPathComponent("Scanned", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("cache".utf8).write(to: directory.appendingPathComponent("a.cache"))
+
+        let provider = TestDirectoryProvider(root: root)
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
+        let scannedItem = try XCTUnwrap(scan.items.first { $0.url == directory })
+        XCTAssertTrue(scannedItem.isDeletable)
+
+        let otherEngine = CleanupEngine(
+            safetyValidator: SafetyValidator(
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+                temporaryDirectory: FileManager.default.temporaryDirectory
+            ),
+            snapshots: CleanupSnapshotRegistry()
+        )
+        let result = await otherEngine.clean([scannedItem], providers: [provider], disposition: .permanent)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertEqual(result.failures.count, 1)
+        XCTAssertTrue(result.failures.first?.reason.contains("scan-time file identity is unavailable") == true)
+    }
+
     func testDirectoryReplacementAfterProviderScanIsRejected() async throws {
         let directory = root.appendingPathComponent("ReplaceMe", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("old".utf8).write(to: directory.appendingPathComponent("old.cache"))
         let provider = TestDirectoryProvider(root: root)
-        let scan = await provider.scan(context: ScanContext()) { _ in }
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
         let scannedItem = try XCTUnwrap(scan.items.first { $0.url == directory })
 
         try FileManager.default.removeItem(at: directory)
@@ -196,11 +224,11 @@ final class CleanupEngineTests: XCTestCase {
         let provider = DownloadsProvider(homeDirectory: home)
         let analysis = try await DownloadsAnalyzer().scan(
             root: downloads,
-            context: ScanContext(homeDirectory: home, showHiddenFiles: true)
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
         )
         let fileItem = try XCTUnwrap(analysis.allFiles.first)
 
-        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem))
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem, registry: snapshots))
         XCTAssertEqual(cleanupItem.providerID, DownloadsProvider.providerID)
         XCTAssertEqual(cleanupItem.risk, .userFiles)
         XCTAssertFalse(cleanupItem.isSelectedByDefault)
@@ -222,11 +250,11 @@ final class CleanupEngineTests: XCTestCase {
         let provider = DownloadsProvider(homeDirectory: home)
         let analysis = try await DownloadsAnalyzer().scan(
             root: downloads,
-            context: ScanContext(homeDirectory: home, showHiddenFiles: true)
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
         )
         let fileItem = try XCTUnwrap(analysis.allFiles.first)
         let scannedIdentity = try XCTUnwrap(
-            CleanupSnapshotRegistry.shared.snapshot(
+            snapshots.snapshot(
                 providerID: DownloadsProvider.analysisSnapshotProviderID,
                 itemID: fileItem.id
             )?.identity
@@ -242,12 +270,13 @@ final class CleanupEngineTests: XCTestCase {
         try FileManager.default.moveItem(at: stagedReplacement, to: original)
         XCTAssertNotEqual(scannedIdentity, try SafetyValidator.captureIdentity(at: original))
 
-        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem))
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: fileItem, registry: snapshots))
         let downloadsEngine = CleanupEngine(
             safetyValidator: SafetyValidator(
                 homeDirectory: home,
                 temporaryDirectory: FileManager.default.temporaryDirectory
-            )
+            ),
+            snapshots: snapshots
         )
         let result = await downloadsEngine.clean(
             [cleanupItem],
@@ -310,12 +339,187 @@ final class CleanupEngineTests: XCTestCase {
         XCTAssertEqual(category.fileCount, 2)
     }
 
+    /// 1.1 negative test: after a folder is removed, only its real descendants are skipped.
+    /// A sibling whose name extends the removed folder's name is still validated on its own,
+    /// so a changed sibling is refused and left in place.
+    func testRemovedFolderDoesNotCoverSiblingWithSharedNamePrefix() async throws {
+        let folder = root.appendingPathComponent("A", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("inner.cache"))
+        let siblingFolder = root.appendingPathComponent("AB", isDirectory: true)
+        try FileManager.default.createDirectory(at: siblingFolder, withIntermediateDirectories: true)
+        let sibling = siblingFolder.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: sibling)
+
+        let folderItem = CleanupItem(
+            providerID: "test-cache",
+            location: .temporaryFiles,
+            name: "A",
+            url: folder,
+            size: 1,
+            kind: .directory,
+            risk: .safe,
+            explanation: "test"
+        )
+        // The recorded size doesn't match the file, so validation must refuse it.
+        let siblingItem = CleanupItem(
+            providerID: "test-cache",
+            location: .temporaryFiles,
+            name: "keep.txt",
+            url: sibling,
+            size: 999,
+            kind: .file,
+            risk: .safe,
+            explanation: "test"
+        )
+
+        let result = await engine.clean(
+            [folderItem, siblingItem],
+            authorizations: [authorization],
+            disposition: .permanent
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sibling.path))
+        XCTAssertEqual(result.cleanedItems.map(\.name), ["A"])
+        XCTAssertEqual(result.failures.map(\.itemName), ["keep.txt"])
+    }
+
+    // MARK: - Identity policy for active caches (L2)
+
+    private func makeCacheHome() throws -> (home: URL, caches: URL) {
+        let home = root.appendingPathComponent("CacheHome-\(UUID().uuidString)", isDirectory: true)
+        let caches = home.appendingPathComponent("Library/Caches", isDirectory: true)
+        try FileManager.default.createDirectory(at: caches, withIntermediateDirectories: true)
+        return (home, caches)
+    }
+
+    private func cacheEngine(home: URL) -> CleanupEngine {
+        CleanupEngine(
+            safetyValidator: SafetyValidator(
+                homeDirectory: home,
+                temporaryDirectory: FileManager.default.temporaryDirectory
+            ),
+            snapshots: snapshots
+        )
+    }
+
+    func testActiveCacheFolderThatGainsAChildIsStillCleaned() async throws {
+        let (home, caches) = try makeCacheHome()
+        let folder = caches.appendingPathComponent("com.example.Browser", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: folder.appendingPathComponent("entry-1"))
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scan = await provider.scan(context: ScanContext(homeDirectory: home, snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url.lastPathComponent == "com.example.Browser" })
+
+        // A running app writes a new cache entry, which changes the folder's mtime and ctime.
+        try await Task.sleep(for: .milliseconds(1_100))
+        try Data("new".utf8).write(to: folder.appendingPathComponent("entry-2"))
+
+        let result = await cacheEngine(home: home).clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// Negative: a cache folder replaced by a different folder (new inode) is refused.
+    func testActiveCacheFolderReplacedByAnotherFolderIsRefused() async throws {
+        let (home, caches) = try makeCacheHome()
+        let folder = caches.appendingPathComponent("com.example.Browser", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: folder.appendingPathComponent("entry"))
+        let provider = UserCacheProvider(homeDirectory: home)
+        let scan = await provider.scan(context: ScanContext(homeDirectory: home, snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url.lastPathComponent == "com.example.Browser" })
+        let scannedInode = try SafetyValidator.captureIdentity(at: folder).inode
+
+        let staged = caches.appendingPathComponent("staged", isDirectory: true)
+        try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+        try Data("replacement".utf8).write(to: staged.appendingPathComponent("keep"))
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.moveItem(at: staged, to: folder)
+        XCTAssertNotEqual(try SafetyValidator.captureIdentity(at: folder).inode, scannedInode)
+
+        let result = await cacheEngine(home: home).clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(result.failures.first?.reason.contains("changed after validation") == true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("keep").path))
+    }
+
+    /// Negative: outside the relaxed cache locations, a folder that gains a child is still
+    /// refused (Temporary Files keeps strict matching).
+    func testStrictLocationFolderThatGainsAChildIsStillRefused() async throws {
+        let folder = root.appendingPathComponent("StrictFolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("a".utf8).write(to: folder.appendingPathComponent("a.cache"))
+        let provider = TestDirectoryProvider(root: root)
+        let scan = await provider.scan(context: ScanContext(snapshots: snapshots)) { _ in }
+        let item = try XCTUnwrap(scan.items.first { $0.url == folder })
+
+        try await Task.sleep(for: .milliseconds(1_100))
+        try Data("b".utf8).write(to: folder.appendingPathComponent("b.cache"))
+
+        let result = await engine.clean([item], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// Negative: a Downloads file whose modification time changed is still refused.
+    func testDownloadsFileWithChangedModificationTimeIsStillRefused() async throws {
+        let home = root.appendingPathComponent("MtimeHome", isDirectory: true)
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        let file = downloads.appendingPathComponent("notes.txt")
+        try Data("draft".utf8).write(to: file)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_900_000_000)],
+            ofItemAtPath: file.path
+        )
+        let provider = DownloadsProvider(homeDirectory: home)
+        let analysis = try await DownloadsAnalyzer().scan(
+            root: downloads,
+            context: ScanContext(homeDirectory: home, showHiddenFiles: true, snapshots: snapshots)
+        )
+        let cleanupItem = try XCTUnwrap(provider.cleanupItem(for: try XCTUnwrap(analysis.allFiles.first), registry: snapshots))
+
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_950_000_000)],
+            ofItemAtPath: file.path
+        )
+
+        let result = await cacheEngine(home: home).clean([cleanupItem], providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.cleanedItems.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testIdentityPolicyComparesOnlyObjectForStableLocations() {
+        func identity(inode: UInt64 = 2, mtime: Int64 = 5, kind: FileItemKind = .directory) -> FileIdentity {
+            FileIdentity(
+                device: 1, inode: inode, byteSize: 3, allocatedByteSize: 4, modificationTime: mtime,
+                modificationNanoseconds: 0, changeTime: mtime, changeNanoseconds: 0, kind: kind
+            )
+        }
+        XCTAssertTrue(CleanupEngine.identity(identity(mtime: 9), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(inode: 3), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(kind: .file), matches: identity(), policy: .stableObject))
+        XCTAssertFalse(CleanupEngine.identity(identity(mtime: 9), matches: identity(), policy: .strict))
+        for location in CleanupLocation.allCases where location.identityMatching == .stableObject {
+            XCTAssertEqual(location.risk, .safe, "\(location)")
+            XCTAssertFalse(location.defaultsToTrash, "\(location)")
+        }
+        for location in [CleanupLocation.downloads, .userLogs, .trash, .temporaryFiles, .projectArtifacts,
+                         .staleIDEVersions, .androidSystemImages, .xcodeArchives] {
+            XCTAssertEqual(location.identityMatching, .strict, "\(location)")
+        }
+    }
+
     private var engine: CleanupEngine {
         CleanupEngine(
             safetyValidator: SafetyValidator(
                 homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
                 temporaryDirectory: FileManager.default.temporaryDirectory
-            )
+            ),
+            snapshots: snapshots
         )
     }
 
@@ -354,6 +558,7 @@ private struct TestDirectoryProvider: CleanupProvider {
     var location: CleanupLocation { .temporaryFiles }
     var allowedRoots: [URL] { [root] }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

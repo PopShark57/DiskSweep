@@ -2,13 +2,14 @@ import Foundation
 
 enum StandardCleanupProviders {
     static func all(
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory
     ) -> [any CleanupProvider] {
         [
             UserCacheProvider(homeDirectory: homeDirectory),
             ApplicationCacheProvider(homeDirectory: homeDirectory),
             LogProvider(homeDirectory: homeDirectory),
-            TemporaryFilesProvider(),
+            TemporaryFilesProvider(temporaryDirectory: temporaryDirectory),
             TrashProvider(homeDirectory: homeDirectory),
             BrowserCacheProvider(homeDirectory: homeDirectory),
             ElectronAppCacheProvider(homeDirectory: homeDirectory),

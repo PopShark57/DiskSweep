@@ -25,6 +25,7 @@ struct SwiftPackageCacheProvider: CleanupProvider {
         ]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

@@ -6,6 +6,14 @@ struct GeneralSettings: Codable, Hashable, Sendable {
     var preferMoveToTrash: Bool
     var showHiddenFiles: Bool
     var automaticallyScanOnLaunch: Bool
+    /// Shows free space and a Scan command in the menu bar.
+    var showsMenuBarExtra: Bool = false
+    /// Posts a notification when free space drops below `lowSpaceThresholdGB`.
+    var notifiesWhenSpaceIsLow: Bool = false
+    var lowSpaceThresholdGB: Int = GeneralSettings.defaultLowSpaceThresholdGB
+
+    static let defaultLowSpaceThresholdGB = 20
+    static let lowSpaceThresholdOptions = [5, 10, 20, 50, 100]
 
     static let defaults = GeneralSettings(
         confirmBeforeCleanup: true,
@@ -13,6 +21,43 @@ struct GeneralSettings: Codable, Hashable, Sendable {
         showHiddenFiles: false,
         automaticallyScanOnLaunch: false
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case confirmBeforeCleanup
+        case preferMoveToTrash
+        case showHiddenFiles
+        case automaticallyScanOnLaunch
+        case showsMenuBarExtra
+        case notifiesWhenSpaceIsLow
+        case lowSpaceThresholdGB
+    }
+}
+
+extension GeneralSettings {
+    init(
+        confirmBeforeCleanup: Bool,
+        preferMoveToTrash: Bool,
+        showHiddenFiles: Bool,
+        automaticallyScanOnLaunch: Bool
+    ) {
+        self.confirmBeforeCleanup = confirmBeforeCleanup
+        self.preferMoveToTrash = preferMoveToTrash
+        self.showHiddenFiles = showHiddenFiles
+        self.automaticallyScanOnLaunch = automaticallyScanOnLaunch
+    }
+
+    // Settings saved before the menu bar options existed omit the newer keys.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        confirmBeforeCleanup = try container.decode(Bool.self, forKey: .confirmBeforeCleanup)
+        preferMoveToTrash = try container.decode(Bool.self, forKey: .preferMoveToTrash)
+        showHiddenFiles = try container.decode(Bool.self, forKey: .showHiddenFiles)
+        automaticallyScanOnLaunch = try container.decode(Bool.self, forKey: .automaticallyScanOnLaunch)
+        showsMenuBarExtra = try container.decodeIfPresent(Bool.self, forKey: .showsMenuBarExtra) ?? false
+        notifiesWhenSpaceIsLow = try container.decodeIfPresent(Bool.self, forKey: .notifiesWhenSpaceIsLow) ?? false
+        lowSpaceThresholdGB = try container.decodeIfPresent(Int.self, forKey: .lowSpaceThresholdGB)
+            ?? Self.defaultLowSpaceThresholdGB
+    }
 }
 
 struct ScanSettings: Codable, Hashable, Sendable {
@@ -21,6 +66,18 @@ struct ScanSettings: Codable, Hashable, Sendable {
     static let defaults = ScanSettings(
         includedLocations: Set(CleanupLocation.allCases.filter { $0 != .downloads })
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case includedLocations
+    }
+}
+
+extension ScanSettings {
+    // Unknown categories, such as one from a newer build, are dropped instead of failing.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        includedLocations = try container.decodeLossyLocationSet(forKey: .includedLocations)
+    }
 }
 
 struct ExclusionSettings: Codable, Hashable, Sendable {
@@ -41,12 +98,6 @@ struct ExclusionSettings: Codable, Hashable, Sendable {
         excludeTimeMachineBackups: true,
         excludePackageContents: true
     )
-
-    static let defaultExcludedDirectoryNames: Set<String> = [
-        ".git",
-        ".svn",
-        "node_modules"
-    ]
 }
 
 struct DeveloperSettings: Codable, Hashable, Sendable {
@@ -56,6 +107,10 @@ struct DeveloperSettings: Codable, Hashable, Sendable {
     var projectFolders: [URL]
     /// How long a project must be unchanged before its artifacts are offered.
     var projectIdleDays: Int
+    /// An Android SDK folder chosen by the person; `nil` uses `~/Library/Android/sdk`.
+    var androidSDKFolder: URL?
+    /// An Android virtual-device folder chosen by the person; `nil` uses `~/.android/avd`.
+    var androidAVDFolder: URL?
 
     static let defaultProjectIdleDays = 90
     static let projectIdleDayOptions = [30, 60, 90, 180, 365]
@@ -72,6 +127,8 @@ struct DeveloperSettings: Codable, Hashable, Sendable {
         case includedLocations
         case projectFolders
         case projectIdleDays
+        case androidSDKFolder
+        case androidAVDFolder
     }
 }
 
@@ -80,10 +137,7 @@ extension DeveloperSettings {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
-        includedLocations = try container.decode(
-            Set<CleanupLocation>.self,
-            forKey: .includedLocations
-        )
+        includedLocations = try container.decodeLossyLocationSet(forKey: .includedLocations)
         projectFolders = try container.decodeIfPresent(
             [URL].self,
             forKey: .projectFolders
@@ -92,6 +146,8 @@ extension DeveloperSettings {
             Int.self,
             forKey: .projectIdleDays
         ) ?? Self.defaultProjectIdleDays
+        androidSDKFolder = try container.decodeIfPresent(URL.self, forKey: .androidSDKFolder)
+        androidAVDFolder = try container.decodeIfPresent(URL.self, forKey: .androidAVDFolder)
     }
 }
 
@@ -113,6 +169,10 @@ struct PrivacySettings: Codable, Hashable, Sendable {
 @Observable
 final class SettingsStore {
     static let defaultStorageKey = "com.disksweep.settings.v1"
+
+    /// Where settings that couldn't be decoded are kept, next to the live key, before
+    /// defaults replace them.
+    var unreadableStorageKey: String { storageKey + ".unreadable" }
 
     var general: GeneralSettings {
         didSet { saveUnlessRestoring() }
@@ -201,7 +261,12 @@ final class SettingsStore {
                 lastPersistenceError = nil
             } catch {
                 loaded = .defaults
-                lastPersistenceError = "Settings could not be read and defaults were restored: \(error.localizedDescription)"
+                // Keep the original bytes before anything can overwrite them.
+                userDefaults.set(data, forKey: storageKey + ".unreadable")
+                lastPersistenceError = "Settings could not be read and defaults were restored. A copy of the unreadable settings was kept. \(error.localizedDescription)"
+                Log.persistence.error(
+                    "Settings could not be decoded: \(error.localizedDescription, privacy: .public)"
+                )
             }
         } else {
             loaded = .defaults
@@ -312,6 +377,9 @@ final class SettingsStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Settings could not be reloaded: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Settings could not be reloaded: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -344,6 +412,9 @@ final class SettingsStore {
             lastPersistenceError = nil
         } catch {
             lastPersistenceError = "Settings could not be saved: \(error.localizedDescription)"
+            Log.persistence.error(
+                "Settings could not be saved: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 }

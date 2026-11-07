@@ -30,6 +30,7 @@ struct TemporaryFilesProvider: CleanupProvider {
     var location: CleanupLocation { .temporaryFiles }
     var allowedRoots: [URL] { [temporaryDirectory] }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -121,7 +122,7 @@ struct TemporaryFilesProvider: CleanupProvider {
             try Task.checkCancellation()
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -144,7 +145,7 @@ struct TemporaryFilesProvider: CleanupProvider {
                 issues: result.issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -155,11 +156,14 @@ struct TemporaryFilesProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            if error is SafetyValidationError {
+                Log.rootRefused(temporaryDirectory, location: location, error: error)
+            }
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: temporaryDirectory)]
+                issues: [ScanIssue(error: error, at: temporaryDirectory)]
             )
         }
     }

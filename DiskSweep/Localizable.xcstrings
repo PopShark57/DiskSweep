@@ -1,0 +1,609 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "—" : {
+
+    },
+    "%@ — Move to Trash recommended" : {
+
+    },
+    "%@ (%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$lld)"
+          }
+        }
+      }
+    },
+    "%@ • %@ files" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ • %2$@ files"
+          }
+        }
+      }
+    },
+    "%@ available" : {
+
+    },
+    "%@ capacity" : {
+
+    },
+    "%@ files" : {
+
+    },
+    "%@ files • %@ of this folder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ files • %2$@ of this folder"
+          }
+        }
+      }
+    },
+    "%@ items" : {
+
+    },
+    "%@ selected" : {
+
+    },
+    "%@ selected for review. Use Finder to inspect copies before removing them." : {
+
+    },
+    "%@ was deleted. Space may be held by local snapshots or still being freed, so less free space was measured." : {
+
+    },
+    "%@ was moved to Trash and is not counted as recovered capacity until Trash is emptied." : {
+
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, %@, reveal only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, reveal only"
+          }
+        }
+      }
+    },
+    "%lld days" : {
+
+    },
+    "%lld Identical Copies" : {
+
+    },
+    "%lld item%@ could not be cleaned. Other items completed safely." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld item%2$@ could not be cleaned. Other items completed safely."
+          }
+        }
+      }
+    },
+    "%lld location%@ could not be read" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld location%2$@ could not be read"
+          }
+        }
+      }
+    },
+    "%lld MB" : {
+
+    },
+    "%lld selected file%@ hidden by filters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld selected file%2$@ hidden by filters"
+          }
+        }
+      }
+    },
+    "Accessed" : {
+
+    },
+    "Add Folder…" : {
+
+    },
+    "Age" : {
+
+    },
+    "Analyze Downloads" : {
+
+    },
+    "Analyze Home Folder" : {
+
+    },
+    "Android emulator system images that no virtual device uses. Android Studio's SDK Manager can download them again." : {
+
+    },
+    "Application Caches" : {
+
+    },
+    "Archived builds that may be needed for distribution or symbolication." : {
+
+    },
+    "Browser Caches" : {
+
+    },
+    "Build products and indexes that Xcode regenerates." : {
+
+    },
+    "Bundle · Reveal only" : {
+
+    },
+    "Bundle, sized as one item" : {
+
+    },
+    "Calculating folder sizes…" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancel Scan" : {
+
+    },
+    "Check Again" : {
+
+    },
+    "Clean %@" : {
+
+    },
+    "Clean Selected — %@" : {
+
+    },
+    "Cleaning…" : {
+
+    },
+    "Cleanup Complete" : {
+
+    },
+    "Collapse %@" : {
+
+    },
+    "Completed cleanups will appear here. History never leaves this Mac." : {
+
+    },
+    "Content you created or downloaded. DiskSweep never preselects it." : {
+
+    },
+    "Custom" : {
+
+    },
+    "Custom Exclusions" : {
+
+    },
+    "Delete Permanently" : {
+
+    },
+    "Developer Files" : {
+
+    },
+    "Device Support" : {
+
+    },
+    "Diagnostic logs written by apps in your user Library." : {
+
+    },
+    "Direct symbolic-link cleanup targets are refused: %@" : {
+
+    },
+    "Disk Usage" : {
+
+    },
+    "DiskSweep" : {
+
+    },
+    "DiskSweep analyzes file metadata locally. File names, paths, contents, and cleanup history are never uploaded." : {
+
+    },
+    "DiskSweep checks only recognized cleanup locations. Nothing is removed during a scan." : {
+
+    },
+    "DiskSweep does not require root access, install privileged daemons, bypass macOS permissions, or ask you to disable SIP." : {
+
+    },
+    "DiskSweep looks here for virtual environments, node_modules, and tagged build caches, and offers them only when their project has been idle. Nothing is selected automatically." : {
+
+    },
+    "DiskSweep never identifies duplicates by filename alone and always leaves at least one copy unselected." : {
+
+    },
+    "DiskSweep never removes an approved cleanup root itself: %@" : {
+
+    },
+    "Disposable browser cache data only—not profiles or browsing data." : {
+
+    },
+    "Disposable cache folders created by apps in your user Library." : {
+
+    },
+    "Done" : {
+
+    },
+    "Download caches for npm, pnpm, Yarn, Bun, pip, uv, Cargo, Gradle, CocoaPods, and Composer, which these tools fetch again when needed." : {
+
+    },
+    "Downloaded Homebrew bottles and source archives, never installed packages." : {
+
+    },
+    "Downloaded package artifacts that Swift Package Manager can restore." : {
+
+    },
+    "Downloads" : {
+
+    },
+    "Downloads are user files. DiskSweep never selects them automatically and prefers moving chosen files to Trash." : {
+
+    },
+    "Duplicates" : {
+
+    },
+    "Electron App Caches" : {
+
+    },
+    "Emptying Trash is permanent and cannot be undone. DiskSweep never selects Trash automatically." : {
+
+    },
+    "Expand %@" : {
+
+    },
+    "Files in Downloads. DiskSweep never selects these automatically." : {
+
+    },
+    "Files in this folder" : {
+
+    },
+    "Find" : {
+
+    },
+    "Find Duplicates" : {
+
+    },
+    "Find reclaimable space" : {
+
+    },
+    "Hidden files aren't reviewed or cleaned. Clear the filters or search to include them." : {
+
+    },
+    "History" : {
+
+    },
+    "Homebrew Cache" : {
+
+    },
+    "HTTP, script, and GPU shader caches of Electron and Chromium-based apps—never their settings, sign-ins, or local storage." : {
+
+    },
+    "Includes smaller folders that aren't listed • %@ of this folder" : {
+
+    },
+    "Items already moved to Trash. Emptying Trash is permanent." : {
+
+    },
+    "Keep" : {
+
+    },
+    "Keep %@" : {
+
+    },
+    "Large Files" : {
+
+    },
+    "Large simulator runtimes, caches, and device data. Review carefully." : {
+
+    },
+    "Minimum size" : {
+
+    },
+    "Modified" : {
+
+    },
+    "Move to Trash" : {
+
+    },
+    "Name" : {
+
+    },
+    "No approved cleanup roots were supplied." : {
+
+    },
+    "No Cleanup History" : {
+
+    },
+    "No custom excluded folders." : {
+
+    },
+    "No items match your search." : {
+
+    },
+    "No project folders. Add the folder where you keep your code, such as ~/Developer." : {
+
+    },
+    "Offer artifacts from projects unchanged for" : {
+
+    },
+    "OK" : {
+
+    },
+    "Old IDE Versions" : {
+
+    },
+    "Older files in this account's temporary directory." : {
+
+    },
+    "Only local file URLs can be cleaned." : {
+
+    },
+    "Only regeneratable items are selected automatically." : {
+
+    },
+    "Only regular files and directories can be cleaned: %@" : {
+
+    },
+    "Open Full Disk Access Settings" : {
+
+    },
+    "Overview" : {
+
+    },
+    "Package Manager Caches" : {
+
+    },
+    "Partial scan results" : {
+
+    },
+    "Per-application data that apps can recreate when needed." : {
+
+    },
+    "Permanent deletion cannot be undone." : {
+
+    },
+    "Potential savings: %@" : {
+
+    },
+    "Project Build Artifacts" : {
+
+    },
+    "Project Folders" : {
+
+    },
+    "Quick Look" : {
+
+    },
+    "Quick Look %@" : {
+
+    },
+    "Ready to Clean" : {
+
+    },
+    "Ready to review" : {
+
+    },
+    "Recommended Cleanup" : {
+
+    },
+    "Recommended. You can restore these files from Trash until it is emptied." : {
+
+    },
+    "Regeneratable data in a recognized cleanup location." : {
+
+    },
+    "Remove %@ from exclusions" : {
+
+    },
+    "Remove %@ from project folders" : {
+
+    },
+    "Rescan" : {
+
+    },
+    "Reveal %@ in Finder" : {
+
+    },
+    "Reveal in Finder" : {
+
+    },
+    "Reveal only: bundles can't be cleaned from DiskSweep" : {
+
+    },
+    "Review Cleanup" : {
+
+    },
+    "Review every selected item before DiskSweep removes anything." : {
+
+    },
+    "Review Permanent Cleanup — %@" : {
+
+    },
+    "Review Recommended" : {
+
+    },
+    "Review Selected Files" : {
+
+    },
+    "Review the exact categories and size before DiskSweep makes changes." : {
+
+    },
+    "Risk level: %@" : {
+
+    },
+    "Safe" : {
+
+    },
+    "Scan" : {
+
+    },
+    "Scan Home Folder" : {
+
+    },
+    "Scan Macintosh HD" : {
+
+    },
+    "Scanned %@" : {
+
+    },
+    "Scanning Macintosh HD…" : {
+
+    },
+    "Search Downloads" : {
+
+    },
+    "Search files" : {
+
+    },
+    "Search results" : {
+
+    },
+    "Select all items in %@" : {
+
+    },
+    "Select duplicate %@" : {
+
+    },
+    "Selected Trash items will be deleted permanently. This cannot be undone." : {
+
+    },
+    "Settings" : {
+
+    },
+    "Settings, plugins, and indexes left behind by JetBrains IDE and Android Studio versions you have since upgraded from." : {
+
+    },
+    "Show %lld item%@ that weren't cleaned" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show %1$lld item%2$@ that weren't cleaned"
+          }
+        }
+      }
+    },
+    "Simulator Data" : {
+
+    },
+    "Size" : {
+
+    },
+    "Smart Cleanup" : {
+
+    },
+    "Sort" : {
+
+    },
+    "Swift Package Caches" : {
+
+    },
+    "Symbols and support files Xcode may redownload for connected devices." : {
+
+    },
+    "Temporary Files" : {
+
+    },
+    "The cleanup root is not an approved user-scoped directory: %@" : {
+
+    },
+    "The cleanup target could not be inspected safely: %@" : {
+
+    },
+    "The cleanup target no longer exists: %@" : {
+
+    },
+    "The directory contains content excluded from cleanup: %@" : {
+
+    },
+    "The folder no longer has the marker that identifies it as a rebuildable project artifact: %@" : {
+
+    },
+    "The item no longer qualifies for cleanup. It may be in use again, or the newer version that replaced it is gone: %@" : {
+
+    },
+    "The path contains a traversal component: %@" : {
+
+    },
+    "The scan was cancelled. Completed categories remain available; rescan for a full result." : {
+
+    },
+    "The target changed after validation and was not removed: %@" : {
+
+    },
+    "The target crosses a filesystem boundary: %@" : {
+
+    },
+    "The target is in a protected location: %@" : {
+
+    },
+    "The target is outside this provider's approved cleanup roots: %@" : {
+
+    },
+    "Total" : {
+
+    },
+    "Trash" : {
+
+    },
+    "Type" : {
+
+    },
+    "Unused Android System Images" : {
+
+    },
+    "User Caches" : {
+
+    },
+    "User Files" : {
+
+    },
+    "User files selected" : {
+
+    },
+    "User Logs" : {
+
+    },
+    "Usually disposable, but it may still be useful to you." : {
+
+    },
+    "View" : {
+
+    },
+    "Virtual environments, dependency folders, and tagged build caches in idle projects inside folders you choose in Settings." : {
+
+    },
+    "Xcode Archives" : {
+
+    },
+    "Xcode DerivedData" : {
+
+    },
+    "Your scan is ready" : {
+
+    }
+  },
+  "version" : "1.0"
+}

@@ -2,7 +2,9 @@ import Foundation
 
 /// Download caches that package managers keep outside `~/Library/Caches`, usually in dotfolders.
 /// Caches inside `~/Library/Caches` (Yarn 1, pip on some setups, CocoaPods, Go) are already
-/// offered by the user cache provider, so they are not repeated here.
+/// offered by the user cache provider, so they are not repeated here. Poetry is the exception:
+/// its `~/Library/Caches/pypoetry` folder also holds virtual environments, so User Caches skips
+/// it and this provider offers only its `cache` and `artifacts` folders, never `virtualenvs`.
 struct DeveloperToolCacheProvider: CleanupProvider {
     static let providerID = "developer-tool-caches"
 
@@ -45,13 +47,22 @@ struct DeveloperToolCacheProvider: CleanupProvider {
         CacheDirectory(".cache/pre-commit", tool: "pre-commit"),
         CacheDirectory(".cargo/registry/cache", tool: "Cargo", label: "Cargo crates"),
         CacheDirectory(".cargo/registry/src", tool: "Cargo", label: "Cargo crate sources"),
-        CacheDirectory(".cargo/git/checkouts", tool: "Cargo", label: "Cargo Git checkouts"),
+        // Git clones; offered for review only, since a folder there could hold local commits.
+        CacheDirectory(
+            ".cargo/git/checkouts",
+            tool: "Cargo",
+            label: "Cargo Git checkouts",
+            needsReview: true
+        ),
         CacheDirectory(".gradle/caches", tool: "Gradle", label: "Gradle caches"),
         CacheDirectory(".gradle/wrapper/dists", tool: "Gradle", label: "Gradle distributions"),
         CacheDirectory(".cocoapods/repos", tool: "CocoaPods"),
         CacheDirectory(".composer/cache", tool: "Composer"),
         CacheDirectory(".cache/composer", tool: "Composer"),
-        CacheDirectory(".node-gyp", tool: "node-gyp")
+        CacheDirectory(".node-gyp", tool: "node-gyp"),
+        // Never add Library/Caches/pypoetry/virtualenvs: those are environments, not downloads.
+        CacheDirectory("Library/Caches/pypoetry/cache", tool: "Poetry"),
+        CacheDirectory("Library/Caches/pypoetry/artifacts", tool: "Poetry", label: "Poetry artifacts")
     ]
 
     let homeDirectory: URL
@@ -68,6 +79,7 @@ struct DeveloperToolCacheProvider: CleanupProvider {
         }
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -99,7 +111,8 @@ struct DeveloperToolCacheProvider: CleanupProvider {
                 explanation: item.explanation,
                 detail: "\(cache.tool) downloads this again the next time it needs it.",
                 isSelectedByDefault: cache.needsReview ? false : item.isSelectedByDefault,
-                isDeletable: item.isDeletable
+                isDeletable: item.isDeletable,
+                unavailableReason: item.unavailableReason
             )
         }
         return ProviderScanResult(location: location, items: items, issues: result.issues)

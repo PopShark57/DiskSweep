@@ -18,6 +18,7 @@ struct XcodeDerivedDataProvider: CleanupProvider {
         )]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -50,6 +51,7 @@ struct XcodeArchivesProvider: CleanupProvider {
         )]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -58,7 +60,7 @@ struct XcodeArchivesProvider: CleanupProvider {
         var issues: [ScanIssue] = []
 
         guard let root = ProviderSupport.existingDirectories(allowedRoots).first else {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: [])
         }
@@ -66,12 +68,13 @@ struct XcodeArchivesProvider: CleanupProvider {
         do {
             _ = try validator.preflightApprovedRoot(root, location: location)
         } catch {
+            Log.rootRefused(root, location: location, error: error)
             issues.append(ScanIssue(
                 kind: .inaccessible,
                 path: root.path,
                 message: error.localizedDescription
             ))
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: issues)
         }
@@ -124,7 +127,8 @@ struct XcodeArchivesProvider: CleanupProvider {
             for archive in archives {
                 try Task.checkCancellation()
                 var isDeletable = true
-                var explanation = "One archived Xcode build. Archives may be needed for distribution or symbolication, so DiskSweep never selects them automatically."
+                var unavailableReason: String?
+                let explanation = "One archived Xcode build. Archives may be needed for distribution or symbolication, so DiskSweep never selects them automatically."
                 var byteCount: Int64 = 0
                 var fileCount = 0
                 let baselineFiles = inspectedFiles
@@ -153,14 +157,14 @@ struct XcodeArchivesProvider: CleanupProvider {
                     issues.append(contentsOf: measured.issues)
                     if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                         isDeletable = false
-                        explanation += " It contains excluded or uninspected content, so it cannot be removed as a unit."
+                        unavailableReason = "It contains excluded or uninspected content, so it cannot be removed as a unit."
                     }
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    issues.append(FileSystemScanner.issue(for: error, at: archive.url))
+                    issues.append(ScanIssue(error: error, at: archive.url))
                     isDeletable = false
-                    explanation += " DiskSweep could not inspect every descendant, so this archive cannot be removed."
+                    unavailableReason = "DiskSweep could not inspect every descendant, so this archive cannot be removed."
                 }
 
                 inspectedFiles += max(0, fileCount)
@@ -169,6 +173,8 @@ struct XcodeArchivesProvider: CleanupProvider {
                 let identity = try? SafetyValidator.captureIdentity(at: archive.url)
                 if identity == nil {
                     isDeletable = false
+                    unavailableReason = unavailableReason
+                        ?? "The archive changed or disappeared before its cleanup identity could be recorded."
                     issues.append(ScanIssue(
                         kind: .disappeared,
                         path: archive.url.path,
@@ -188,7 +194,8 @@ struct XcodeArchivesProvider: CleanupProvider {
                     risk: .reviewRecommended,
                     explanation: explanation,
                     isSelectedByDefault: false,
-                    isDeletable: isDeletable
+                    isDeletable: isDeletable,
+                    unavailableReason: unavailableReason
                 )
                 items.append(item)
                 if let identity {
@@ -202,7 +209,7 @@ struct XcodeArchivesProvider: CleanupProvider {
             try Task.checkCancellation()
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -214,7 +221,7 @@ struct XcodeArchivesProvider: CleanupProvider {
                 issues: issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -225,11 +232,11 @@ struct XcodeArchivesProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: root)]
+                issues: [ScanIssue(error: error, at: root)]
             )
         }
     }
@@ -265,6 +272,7 @@ struct XcodeSimulatorDataProvider: CleanupProvider {
         ProviderPaths.simulatorCacheRoots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -303,6 +311,7 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
         ].map { xcode.appendingPathComponent($0, isDirectory: true) }
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -340,7 +349,8 @@ struct XcodeDeviceSupportProvider: CleanupProvider {
                 explanation: item.explanation,
                 detail: "Beta build replaced by release build \(release.build)",
                 isSelectedByDefault: item.isDeletable,
-                isDeletable: item.isDeletable
+                isDeletable: item.isDeletable,
+                unavailableReason: item.unavailableReason
             )
         }
         return ProviderScanResult(location: location, items: items, issues: result.issues)

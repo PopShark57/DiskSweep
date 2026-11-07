@@ -4,6 +4,14 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Bindable var settings: SettingsStore
     @Bindable var permissions: PermissionManager
+    /// The home folder project folders are checked against. Debug builds can override it
+    /// with a fixture home; see `DebugLaunchEnvironment`.
+    var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    /// Whether a cleanup history file exists, and how to delete it when history is turned off.
+    var hasHistoryFile: Bool = false
+    var deleteHistoryFile: () -> Void = {}
+
+    @State private var offersHistoryDeletion = false
 
     @State private var selectedTab: SettingsTab = .general
     @State private var folderPickerPurpose: FolderPickerPurpose?
@@ -13,6 +21,8 @@ struct SettingsView: View {
     enum FolderPickerPurpose {
         case exclusion
         case projectFolder
+        case androidSDK
+        case androidAVD
     }
 
     enum SettingsTab: String, CaseIterable, Identifiable {
@@ -55,6 +65,10 @@ struct SettingsView: View {
                         symbol: selectedTab.symbol
                     )
 
+                    if let error = settings.lastPersistenceError {
+                        PersistenceErrorBanner(message: error)
+                    }
+
                     switch selectedTab {
                     case .general: generalSettings
                     case .scan: scanSettings
@@ -85,6 +99,8 @@ struct SettingsView: View {
                 switch purpose {
                 case .exclusion: settings.addExclusion(url)
                 case .projectFolder: settings.addProjectFolder(url)
+                case .androidSDK: settings.developer.androidSDKFolder = url.standardizedFileURL
+                case .androidAVD: settings.developer.androidAVDFolder = url.standardizedFileURL
                 case nil: break
                 }
             }
@@ -116,6 +132,31 @@ struct SettingsView: View {
                 detail: "Start a cleanup-location scan after DiskSweep opens.",
                 isOn: $settings.general.automaticallyScanOnLaunch
             )
+            Divider()
+            settingsToggle(
+                "Show in menu bar",
+                detail: "Show free space and a Scan command in the menu bar. Free space refreshes every 15 minutes.",
+                isOn: $settings.general.showsMenuBarExtra
+            )
+            Divider()
+            settingsToggle(
+                "Notify when free space is low",
+                detail: "Post a notification once when free space drops below the amount you choose. Checked every 15 minutes.",
+                isOn: $settings.general.notifiesWhenSpaceIsLow
+            )
+            .onChange(of: settings.general.notifiesWhenSpaceIsLow) { _, isOn in
+                if isOn { Task { _ = await LowSpaceMonitor.requestAuthorization() } }
+            }
+            if settings.general.notifiesWhenSpaceIsLow {
+                Picker("Warn below", selection: $settings.general.lowSpaceThresholdGB) {
+                    ForEach(GeneralSettings.lowSpaceThresholdOptions, id: \.self) { gigabytes in
+                        Text("\(gigabytes) GB").tag(gigabytes)
+                    }
+                }
+                .frame(width: 220)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
         }
         .cardSurface(padding: 0)
     }
@@ -144,7 +185,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 settingsToggle(
                     "Version-control metadata",
-                    detail: "Exclude .git and .svn folders.",
+                    detail: "Skip .git and .svn folders in analysis views. Cleanup never removes folders that contain them, except Git clones that Xcode DerivedData and package-manager caches keep for themselves.",
                     isOn: $settings.exclusions.excludeVersionControlMetadata
                 )
                 Divider()
@@ -173,8 +214,8 @@ struct SettingsView: View {
                 )
                 Divider()
                 settingsToggle(
-                    "Package contents",
-                    detail: "Skip application and document bundle internals where unnecessary.",
+                    "Treat bundles as single items",
+                    detail: "Show apps, virtual machines, media libraries, and other bundles as one item with their total size, instead of listing the files inside them.",
                     isOn: $settings.exclusions.excludePackageContents
                 )
             }
@@ -246,6 +287,63 @@ struct SettingsView: View {
 
             projectFolderSettings
                 .disabled(!settings.developer.isEnabled)
+
+            androidLocationSettings
+                .disabled(!settings.developer.isEnabled)
+        }
+    }
+
+    private var androidLocationSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Android locations")
+                .font(.headline)
+            Text("If you moved the Android SDK or your virtual devices, choose their folders so unused system images can be found. The SDK folder must contain platform-tools, licenses, or emulator, and be inside your home folder outside protected locations.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            androidLocationRow(
+                title: "SDK",
+                value: settings.developer.androidSDKFolder,
+                placeholder: "~/Library/Android/sdk",
+                choose: { folderPickerPurpose = .androidSDK },
+                reset: { settings.developer.androidSDKFolder = nil }
+            )
+            if let sdk = settings.developer.androidSDKFolder,
+               !AndroidSystemImageRules.isSDKImagesRoot(sdk.appendingPathComponent("system-images")) {
+                Label("This folder doesn't look like an Android SDK, so DiskSweep will skip it.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            androidLocationRow(
+                title: "Virtual devices",
+                value: settings.developer.androidAVDFolder,
+                placeholder: "~/.android/avd",
+                choose: { folderPickerPurpose = .androidAVD },
+                reset: { settings.developer.androidAVDFolder = nil }
+            )
+        }
+        .cardSurface()
+    }
+
+    private func androidLocationRow(
+        title: String,
+        value: URL?,
+        placeholder: String,
+        choose: @escaping () -> Void,
+        reset: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 110, alignment: .leading)
+            Text(value?.path(percentEncoded: false) ?? placeholder)
+                .foregroundStyle(value == nil ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Button("Choose…", action: choose)
+            if value != nil {
+                Button("Use Default", action: reset)
+            }
         }
     }
 
@@ -295,7 +393,7 @@ struct SettingsView: View {
                                 .buttonStyle(.borderless)
                                 .accessibilityLabel("Remove \(url.lastPathComponent) from project folders")
                             }
-                            if let reason = ProjectArtifactsProvider.refusalReason(for: url) {
+                            if let reason = ProjectArtifactsProvider.refusalReason(for: url, homeDirectory: homeDirectory) {
                                 Label(reason, systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.orange)
@@ -324,6 +422,19 @@ struct SettingsView: View {
                 isOn: $settings.privacy.keepLocalCleanupHistory
             )
             .cardSurface(padding: 0)
+            .onChange(of: settings.privacy.keepLocalCleanupHistory) { _, keeps in
+                if !keeps, hasHistoryFile { offersHistoryDeletion = true }
+            }
+            .confirmationDialog(
+                "Delete the existing cleanup history?",
+                isPresented: $offersHistoryDeletion,
+                titleVisibility: .visible
+            ) {
+                Button("Delete History", role: .destructive, action: deleteHistoryFile)
+                Button("Keep File", role: .cancel) {}
+            } message: {
+                Text("New cleanups won't be recorded. The history already saved on this Mac stays unless you delete it.")
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {

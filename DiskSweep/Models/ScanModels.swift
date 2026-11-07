@@ -58,6 +58,47 @@ struct ScanIssue: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+extension ScanIssue {
+    /// Classifies a filesystem error. This is the single mapping used by the scanner,
+    /// providers, and analyzers.
+    init(error: Error, at url: URL) {
+        let kind: Kind
+        if error is SafetyValidationError {
+            kind = .inaccessible
+        } else {
+            let nsError = error as NSError
+            switch nsError.domain {
+            case NSCocoaErrorDomain:
+                switch CocoaError.Code(rawValue: nsError.code) {
+                case .fileReadNoPermission, .fileWriteNoPermission:
+                    kind = .permissionDenied
+                case .fileNoSuchFile, .fileReadNoSuchFile:
+                    kind = .disappeared
+                case .fileReadUnknown, .fileReadCorruptFile,
+                     .fileReadInapplicableStringEncoding:
+                    kind = .inputOutput
+                default:
+                    kind = .inaccessible
+                }
+            case NSPOSIXErrorDomain:
+                switch Int32(nsError.code) {
+                case EACCES, EPERM:
+                    kind = .permissionDenied
+                case ENOENT:
+                    kind = .disappeared
+                case EIO:
+                    kind = .inputOutput
+                default:
+                    kind = .inaccessible
+                }
+            default:
+                kind = .unknown
+            }
+        }
+        self.init(kind: kind, path: url.path, message: error.localizedDescription)
+    }
+}
+
 struct ScanContext: Sendable {
     let homeDirectory: URL
     let exclusions: [URL]
@@ -69,6 +110,8 @@ struct ScanContext: Sendable {
     let excludeTimeMachineBackups: Bool
     let excludePackageContents: Bool
     let now: Date
+    /// Where providers and analyzers record scan-time identities for the cleanup engine.
+    let snapshots: CleanupSnapshotRegistry
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -80,7 +123,8 @@ struct ScanContext: Sendable {
         excludePhotoLibraries: Bool = true,
         excludeTimeMachineBackups: Bool = true,
         excludePackageContents: Bool = true,
-        now: Date = Date()
+        now: Date = Date(),
+        snapshots: CleanupSnapshotRegistry = .shared
     ) {
         self.homeDirectory = homeDirectory
         self.exclusions = exclusions
@@ -92,5 +136,6 @@ struct ScanContext: Sendable {
         self.excludeTimeMachineBackups = excludeTimeMachineBackups
         self.excludePackageContents = excludePackageContents
         self.now = now
+        self.snapshots = snapshots
     }
 }

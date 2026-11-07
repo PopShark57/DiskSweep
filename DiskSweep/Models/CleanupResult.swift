@@ -26,6 +26,10 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
     let bytes: Int64
     let fileCount: Int
     let disposition: CleanupDisposition
+    /// For items moved to the Trash: where the item was, and where it went, so the move can
+    /// be undone. `nil` for permanent deletions.
+    let originalPath: String?
+    let trashURL: URL?
 
     init(
         id: UUID = UUID(),
@@ -33,7 +37,9 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
         location: CleanupLocation,
         bytes: Int64,
         fileCount: Int,
-        disposition: CleanupDisposition
+        disposition: CleanupDisposition,
+        originalPath: String? = nil,
+        trashURL: URL? = nil
     ) {
         self.id = id
         self.name = name
@@ -41,16 +47,56 @@ struct CleanedItemRecord: Identifiable, Codable, Hashable, Sendable {
         self.bytes = max(0, bytes)
         self.fileCount = max(0, fileCount)
         self.disposition = disposition
+        self.originalPath = originalPath
+        self.trashURL = trashURL
     }
+
+    /// The item as something that can be put back, if it went to the Trash.
+    var trashedItem: TrashedItem? {
+        guard let originalPath, let trashURL else { return nil }
+        return TrashedItem(name: name, originalPath: originalPath, trashPath: trashURL.path)
+    }
+}
+
+/// An item moved to the Trash by a cleanup, recorded so it can be put back.
+struct TrashedItem: Codable, Hashable, Sendable {
+    let name: String
+    let originalPath: String
+    let trashPath: String
 }
 
 struct CleanupResult: Codable, Hashable, Sendable {
     let startedAt: Date
     let finishedAt: Date
+    /// Free space including purgeable space, as shown to the user.
     let availableBefore: Int64
     let availableAfter: Int64
+    /// Free space excluding purgeable space, used to measure what the cleanup freed.
+    /// `nil` when not measured; the values above are used instead.
+    let availableBeforeExcludingPurgeable: Int64?
+    let availableAfterExcludingPurgeable: Int64?
     let cleanedItems: [CleanedItemRecord]
     let failures: [CleanupFailure]
+
+    init(
+        startedAt: Date,
+        finishedAt: Date,
+        availableBefore: Int64,
+        availableAfter: Int64,
+        availableBeforeExcludingPurgeable: Int64? = nil,
+        availableAfterExcludingPurgeable: Int64? = nil,
+        cleanedItems: [CleanedItemRecord],
+        failures: [CleanupFailure]
+    ) {
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.availableBefore = availableBefore
+        self.availableAfter = availableAfter
+        self.availableBeforeExcludingPurgeable = availableBeforeExcludingPurgeable
+        self.availableAfterExcludingPurgeable = availableAfterExcludingPurgeable
+        self.cleanedItems = cleanedItems
+        self.failures = failures
+    }
 
     var reportedBytesRemoved: Int64 {
         cleanedItems.reduce(0) { $0 + $1.bytes }
@@ -68,8 +114,23 @@ struct CleanupResult: Codable, Hashable, Sendable {
             .reduce(0) { $0 + $1.bytes }
     }
 
+    /// An estimate: the change in free space excluding purgeable space when it was measured,
+    /// which background activity can still nudge. History entries recorded before this
+    /// measurement changed (6.4) used the value that includes purgeable space, so old and new
+    /// entries aren't strictly comparable.
     var measuredBytesRecovered: Int64 {
-        max(0, availableAfter - availableBefore)
+        if let before = availableBeforeExcludingPurgeable,
+           let after = availableAfterExcludingPurgeable {
+            return max(0, after - before)
+        }
+        return max(0, availableAfter - availableBefore)
+    }
+
+    /// True when much less space was measured than was permanently removed, which usually
+    /// means local snapshots still hold the blocks or the volume is still freeing them.
+    var measuredRecoveryLooksLow: Bool {
+        let removed = reportedBytesPermanentlyRemoved
+        return removed > 0 && measuredBytesRecovered * 2 < removed
     }
 
     /// A conservative presentation value. Moving an item to same-volume Trash does not
@@ -83,6 +144,8 @@ struct CleanupResult: Codable, Hashable, Sendable {
     var fileCount: Int {
         cleanedItems.reduce(0) { $0 + $1.fileCount }
     }
+
+    var trashedItems: [TrashedItem] { cleanedItems.compactMap(\.trashedItem) }
 }
 
 struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
@@ -93,6 +156,9 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let fileCount: Int
     let categories: [CleanupLocation]
     let failureCount: Int
+    /// Items this cleanup moved to the Trash, for Put Back. Empty in entries recorded before
+    /// this was added.
+    let trashedItems: [TrashedItem]
 
     init(
         id: UUID = UUID(),
@@ -101,7 +167,8 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         bytesMovedToTrash: Int64 = 0,
         fileCount: Int,
         categories: [CleanupLocation],
-        failureCount: Int
+        failureCount: Int,
+        trashedItems: [TrashedItem] = []
     ) {
         self.id = id
         self.date = date
@@ -110,6 +177,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         self.fileCount = max(0, fileCount)
         self.categories = categories
         self.failureCount = max(0, failureCount)
+        self.trashedItems = trashedItems
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -120,6 +188,7 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         case fileCount
         case categories
         case failureCount
+        case trashedItems
     }
 
     init(from decoder: Decoder) throws {
@@ -128,8 +197,9 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         date = try container.decode(Date.self, forKey: .date)
         let legacyRecovered = max(0, try container.decode(Int64.self, forKey: .bytesRecovered))
         fileCount = max(0, try container.decode(Int.self, forKey: .fileCount))
-        categories = try container.decode([CleanupLocation].self, forKey: .categories)
+        categories = try container.decodeLossyLocations(forKey: .categories)
         failureCount = max(0, try container.decode(Int.self, forKey: .failureCount))
+        trashedItems = (try? container.decodeIfPresent([TrashedItem].self, forKey: .trashedItems)) ?? []
 
         if let recordedTrashBytes = try container.decodeIfPresent(
             Int64.self,
@@ -158,5 +228,8 @@ struct CleanupHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         try container.encode(fileCount, forKey: .fileCount)
         try container.encode(categories, forKey: .categories)
         try container.encode(failureCount, forKey: .failureCount)
+        if !trashedItems.isEmpty {
+            try container.encode(trashedItems, forKey: .trashedItems)
+        }
     }
 }

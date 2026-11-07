@@ -121,6 +121,90 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.isScanLocationEnabled(.userLogs))
     }
 
+    // MARK: - Tolerant, non-destructive loading (D5)
+
+    func testUnknownLocationIsDroppedAndOtherSettingsSurvive() throws {
+        let defaults = makeUserDefaults()
+        let stored = """
+        {
+          "version": 2,
+          "general": {
+            "confirmBeforeCleanup": false,
+            "preferMoveToTrash": false,
+            "showHiddenFiles": true,
+            "automaticallyScanOnLaunch": true
+          },
+          "scan": { "includedLocations": ["userCaches", "categoryFromTheFuture"] },
+          "exclusions": {
+            "customURLs": [],
+            "excludeVersionControlMetadata": true,
+            "excludeNodeModulesFromDeepScans": true,
+            "excludeCloudPlaceholders": true,
+            "excludePhotoLibraries": true,
+            "excludeTimeMachineBackups": true,
+            "excludePackageContents": true
+          },
+          "developer": {
+            "isEnabled": true,
+            "includedLocations": ["xcodeDerivedData", "anotherFutureCategory"],
+            "projectFolders": [],
+            "projectIdleDays": 30
+          },
+          "privacy": { "keepLocalCleanupHistory": false }
+        }
+        """
+        defaults.set(Data(stored.utf8), forKey: "settings")
+
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+
+        XCTAssertNil(store.lastPersistenceError)
+        XCTAssertEqual(store.scan.includedLocations, [.userCaches])
+        XCTAssertEqual(store.developer.includedLocations, [.xcodeDerivedData])
+        XCTAssertFalse(store.general.confirmBeforeCleanup)
+        XCTAssertTrue(store.general.showHiddenFiles)
+        XCTAssertEqual(store.developer.projectIdleDays, 30)
+        XCTAssertFalse(store.privacy.keepLocalCleanupHistory)
+        XCTAssertNil(defaults.data(forKey: "settings.unreadable"))
+    }
+
+    func testGarbageSettingsAreBackedUpBeforeDefaultsReplaceThem() {
+        let defaults = makeUserDefaults()
+        let garbage = Data("not settings".utf8)
+        defaults.set(garbage, forKey: "settings")
+
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertNotNil(store.lastPersistenceError)
+        XCTAssertEqual(store.general, .defaults)
+        XCTAssertEqual(defaults.data(forKey: "settings.unreadable"), garbage)
+
+        store.general.showHiddenFiles = true
+        XCTAssertEqual(defaults.data(forKey: "settings.unreadable"), garbage)
+        XCTAssertNotEqual(defaults.data(forKey: "settings"), garbage)
+    }
+
+    /// F9: settings saved before the menu bar options existed still load, with them off.
+    func testSettingsWithoutMenuBarKeysLoadWithThemOff() throws {
+        let defaults = makeUserDefaults()
+        let store = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        store.general.showHiddenFiles = true
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(defaults.data(forKey: "settings"))) as? [String: Any]
+        )
+        var general = try XCTUnwrap(json["general"] as? [String: Any])
+        general.removeValue(forKey: "showsMenuBarExtra")
+        general.removeValue(forKey: "notifiesWhenSpaceIsLow")
+        general.removeValue(forKey: "lowSpaceThresholdGB")
+        json["general"] = general
+        defaults.set(try JSONSerialization.data(withJSONObject: json), forKey: "settings")
+
+        let reloaded = SettingsStore(userDefaults: defaults, storageKey: "settings")
+        XCTAssertNil(reloaded.lastPersistenceError)
+        XCTAssertTrue(reloaded.general.showHiddenFiles)
+        XCTAssertFalse(reloaded.general.showsMenuBarExtra)
+        XCTAssertFalse(reloaded.general.notifiesWhenSpaceIsLow)
+        XCTAssertEqual(reloaded.general.lowSpaceThresholdGB, GeneralSettings.defaultLowSpaceThresholdGB)
+    }
+
     func testNewCategoriesTurnedOffAfterMigrationStayOff() {
         let defaults = makeUserDefaults()
         let legacy = """

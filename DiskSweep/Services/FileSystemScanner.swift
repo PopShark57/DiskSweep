@@ -154,7 +154,7 @@ struct FileSystemScanner: Sendable {
                 includingPropertiesForKeys: Array(resourceKeys),
                 options: enumerationOptions,
                 errorHandler: { url, error in
-                    issues.append(Self.issue(for: error, at: url))
+                    issues.append(ScanIssue(error: error, at: url))
                     return true
                 }
             ) else {
@@ -176,7 +176,6 @@ struct FileSystemScanner: Sendable {
                 lastURL = candidate
 
                 let standardized = candidate.standardizedFileURL
-                let resolved = standardized.resolvingSymlinksInPath()
                 let name = standardized.lastPathComponent
                 let pathExtension = standardized.pathExtension.lowercased()
 
@@ -184,10 +183,7 @@ struct FileSystemScanner: Sendable {
                     || options.excludedNames.contains(name.lowercased())
                     || options.excludedExtensions.contains(pathExtension)
                     || (options.skipCloudPlaceholders && pathExtension == "icloud")
-                    || exclusions.contains(where: {
-                        Self.isSameOrDescendant(standardized, of: $0)
-                            || Self.isSameOrDescendant(resolved, of: $0)
-                    }) {
+                    || Self.isExcluded(standardized, by: exclusions) {
                     excludedURLs.append(standardized)
                     enumerator.skipDescendants()
                     continue
@@ -195,9 +191,10 @@ struct FileSystemScanner: Sendable {
 
                 let values: URLResourceValues
                 do {
-                    values = try standardized.resourceValues(forKeys: resourceKeys)
+                    // The enumerator's own URL carries the prefetched values.
+                    values = try candidate.resourceValues(forKeys: resourceKeys)
                 } catch {
-                    issues.append(Self.issue(for: error, at: standardized))
+                    issues.append(ScanIssue(error: error, at: standardized))
                     continue
                 }
 
@@ -315,30 +312,13 @@ struct FileSystemScanner: Sendable {
         }
     }
 
-    private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
-    }
-
-    static func issue(for error: Error, at url: URL) -> ScanIssue {
-        let cocoaError = error as? CocoaError
-        let kind: ScanIssue.Kind
-
-        switch cocoaError?.code {
-        case .fileReadNoPermission, .fileWriteNoPermission:
-            kind = .permissionDenied
-        case .fileNoSuchFile:
-            kind = .disappeared
-        case .fileReadUnknown, .fileReadCorruptFile, .fileReadInapplicableStringEncoding:
-            kind = .inputOutput
-        case .none:
-            kind = .unknown
-        default:
-            kind = .inaccessible
-        }
-
-        return ScanIssue(kind: kind, path: url.path, message: error.localizedDescription)
+    /// Whether an entry is inside an exclusion, compared both as enumerated and with symlinks
+    /// resolved. Resolving costs a filesystem call per path component, so it only happens when
+    /// there are exclusions and the enumerated path didn't already match.
+    private static func isExcluded(_ url: URL, by exclusions: [URL]) -> Bool {
+        guard !exclusions.isEmpty else { return false }
+        if exclusions.contains(where: { url.isSameOrDescendant(of: $0) }) { return true }
+        let resolved = url.resolvingSymlinksInPath()
+        return exclusions.contains { resolved.isSameOrDescendant(of: $0) }
     }
 }

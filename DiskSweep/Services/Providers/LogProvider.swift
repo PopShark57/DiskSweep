@@ -21,6 +21,7 @@ struct LogProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent("Library/Logs", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -30,7 +31,7 @@ struct LogProvider: CleanupProvider {
         var issues: [ScanIssue] = []
 
         guard let root = ProviderSupport.existingDirectories(allowedRoots).first else {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: [])
         }
@@ -38,12 +39,13 @@ struct LogProvider: CleanupProvider {
         do {
             _ = try validator.preflightApprovedRoot(root, location: location)
         } catch {
+            Log.rootRefused(root, location: location, error: error)
             issues.append(ScanIssue(
                 kind: .inaccessible,
                 path: root.path,
                 message: error.localizedDescription
             ))
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             await reportCompletion(items: [], progress: progress)
             return ProviderScanResult(location: location, items: [], issues: issues)
         }
@@ -102,7 +104,7 @@ struct LogProvider: CleanupProvider {
                 do {
                     identity = try SafetyValidator.captureIdentity(at: file.url)
                 } catch {
-                    issues.append(FileSystemScanner.issue(for: error, at: file.url))
+                    issues.append(ScanIssue(error: error, at: file.url))
                     continue
                 }
                 let snapshotModifiedAt = identity.modificationDate
@@ -135,7 +137,7 @@ struct LogProvider: CleanupProvider {
             items.sort { $0.size > $1.size }
             try Task.checkCancellation()
 
-            CleanupSnapshotRegistry.shared.replace(
+            context.snapshots.replace(
                 providerID: id,
                 snapshots: snapshots
             )
@@ -147,7 +149,7 @@ struct LogProvider: CleanupProvider {
                 issues: issues
             )
         } catch is CancellationError {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
@@ -158,11 +160,11 @@ struct LogProvider: CleanupProvider {
                 )]
             )
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: [FileSystemScanner.issue(for: error, at: root)]
+                issues: [ScanIssue(error: error, at: root)]
             )
         }
     }

@@ -15,6 +15,7 @@ struct ApplicationCacheProvider: CleanupProvider {
         ProviderPaths.applicationCacheRoots(homeDirectory: homeDirectory)
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler

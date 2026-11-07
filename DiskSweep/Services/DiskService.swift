@@ -60,6 +60,9 @@ struct DiskService: Sendable {
 
             available = min(capacity, max(0, available))
             let used = max(0, capacity - available)
+            let withoutPurgeable = values.volumeAvailableCapacity.map {
+                min(capacity, max(0, Int64($0)))
+            } ?? available
             let fallbackName = mountURL.path == "/"
                 ? "Macintosh HD"
                 : mountURL.lastPathComponent
@@ -72,7 +75,8 @@ struct DiskService: Sendable {
                 capacity: capacity,
                 used: used,
                 available: available,
-                reclaimable: max(0, reclaimable)
+                reclaimable: max(0, reclaimable),
+                availableExcludingPurgeable: withoutPurgeable
             )
         }
         return try await withTaskCancellationHandler {

@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class ProjectArtifactsProviderTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     private var root: URL!
     private var home: URL!
     private var code: URL!
@@ -221,7 +222,7 @@ final class ProjectArtifactsProviderTests: XCTestCase {
     private let cacheTag = "Signature: 8a477f597d28d172789f06886806bc55\n# Test cache.\n"
 
     private var context: ScanContext {
-        ScanContext(homeDirectory: home, now: now)
+        ScanContext(homeDirectory: home, now: now, snapshots: snapshots)
     }
 
     private var engine: CleanupEngine {
@@ -229,7 +230,8 @@ final class ProjectArtifactsProviderTests: XCTestCase {
             safetyValidator: SafetyValidator(
                 homeDirectory: home,
                 temporaryDirectory: FileManager.default.temporaryDirectory
-            )
+            ),
+            snapshots: snapshots
         )
     }
 

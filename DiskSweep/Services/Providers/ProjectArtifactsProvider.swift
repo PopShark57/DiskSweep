@@ -37,7 +37,7 @@ enum ProjectArtifactRules {
 
     /// Nested names that may appear inside a recognized artifact even though DiskSweep
     /// normally refuses to remove a folder that contains them.
-    static let permittedNestedNames: Set<String> = ["node_modules"]
+    static var permittedNestedNames: Set<String> { CleanupLocation.projectArtifacts.permittedNestedNames }
 
     static func kind(ofDirectory url: URL) -> ProjectArtifactKind? {
         guard (try? SafetyValidator.captureIdentity(at: url))?.kind == .directory else {
@@ -152,6 +152,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         }
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -166,6 +167,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
                 _ = try validator.preflightApprovedRoot(root, location: location)
                 roots.append(root)
             } catch {
+                Log.rootRefused(root, location: location, error: error)
                 issues.append(ScanIssue(
                     kind: .inaccessible,
                     path: root.path,
@@ -176,7 +178,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
         // A folder nested inside another chosen folder is already covered by its parent.
         roots = roots.filter { root in
             !roots.contains { other in
-                other != root && Self.isStrictDescendant(root, of: other)
+                other != root && root.isStrictDescendant(of: other)
             }
         }
 
@@ -251,7 +253,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
             }
             try Task.checkCancellation()
         } catch {
-            CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: [:])
+            context.snapshots.replace(providerID: id, snapshots: [:])
             if error is CancellationError || Task.isCancelled {
                 return ProviderScanResult(
                     location: location,
@@ -266,15 +268,15 @@ struct ProjectArtifactsProvider: CleanupProvider {
             return ProviderScanResult(
                 location: location,
                 items: [],
-                issues: issues + [FileSystemScanner.issue(
-                    for: error,
+                issues: issues + [ScanIssue(
+                    error: error,
                     at: roots.last ?? URL(fileURLWithPath: "/")
                 )]
             )
         }
 
         items.sort { $0.size > $1.size }
-        CleanupSnapshotRegistry.shared.replace(providerID: id, snapshots: snapshots)
+        context.snapshots.replace(providerID: id, snapshots: snapshots)
         await progress(ScanProgress(
             phase: .completed,
             location: location,
@@ -297,7 +299,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
         onProgress: @escaping DirectorySizeProgressHandler
     ) async throws -> (item: CleanupItem, snapshot: CleanupScanSnapshot)? {
         var isDeletable = true
-        var explanation = candidate.kind.explanation
+        let explanation = candidate.kind.explanation
+        var unavailableReason: String?
         var byteCount: Int64 = 0
         var fileCount = 0
 
@@ -317,14 +320,14 @@ struct ProjectArtifactsProvider: CleanupProvider {
             issues.append(contentsOf: measured.issues)
             if !measured.excludedURLs.isEmpty || !measured.issues.isEmpty {
                 isDeletable = false
-                explanation += " It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
+                unavailableReason = "It contains excluded or uninspected content, so DiskSweep will not remove it as a unit."
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            issues.append(FileSystemScanner.issue(for: error, at: candidate.url))
+            issues.append(ScanIssue(error: error, at: candidate.url))
             isDeletable = false
-            explanation += " DiskSweep could not inspect every descendant, so this folder cannot be removed."
+            unavailableReason = "DiskSweep could not inspect every descendant, so this folder cannot be removed."
         }
 
         let identity: FileIdentity
@@ -363,7 +366,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
             explanation: explanation,
             detail: detail,
             isSelectedByDefault: false,
-            isDeletable: isDeletable
+            isDeletable: isDeletable,
+            unavailableReason: unavailableReason
         )
         return (
             item,
@@ -407,7 +411,7 @@ struct ProjectArtifactsProvider: CleanupProvider {
                 includingPropertiesForKeys: Array(keys),
                 options: [.skipsPackageDescendants],
                 errorHandler: { url, error in
-                    result.issues.append(FileSystemScanner.issue(for: error, at: url))
+                    result.issues.append(ScanIssue(error: error, at: url))
                     return true
                 }
             ) else {
@@ -428,8 +432,8 @@ struct ProjectArtifactsProvider: CleanupProvider {
                 let pathExtension = url.pathExtension.lowercased()
 
                 if normalizedExclusions.contains(where: {
-                    Self.isSameOrDescendant(url, of: $0)
-                        || Self.isSameOrDescendant(url.resolvingSymlinksInPath(), of: $0)
+                    url.isSameOrDescendant(of: $0)
+                        || url.resolvingSymlinksInPath().isSameOrDescendant(of: $0)
                 }) || FileSystemSafetyPolicy.excludedExtensions.contains(pathExtension)
                     || pathExtension == "icloud" {
                     enumerator.skipDescendants()
@@ -508,17 +512,5 @@ struct ProjectArtifactsProvider: CleanupProvider {
             if directory.pathComponents.count == rootComponentCount { return }
             directory = directory.deletingLastPathComponent()
         }
-    }
-
-    private static func isSameOrDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
-    }
-
-    private static func isStrictDescendant(_ candidate: URL, of root: URL) -> Bool {
-        candidate.pathComponents.count > root.pathComponents.count
-            && isSameOrDescendant(candidate, of: root)
     }
 }

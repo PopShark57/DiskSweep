@@ -23,14 +23,37 @@ struct LargeFilesView: View {
     @State private var sort: LargeFileSort = .size
     @State private var searchText = ""
     @State private var customThresholdMB = 250
+    /// Whether the person chose Custom. Kept separately from the threshold so choosing
+    /// Custom keeps the current value instead of jumping to another one.
+    @State private var isCustomThreshold = false
     @FocusState private var isSearchFocused: Bool
 
-    private let thresholds: [(String, Int64)] = [
-        ("> 100 MB", 100_000_000),
-        ("> 500 MB", 500_000_000),
-        ("> 1 GB", 1_000_000_000),
-        ("> 5 GB", 5_000_000_000)
-    ]
+    private enum ThresholdChoice: Hashable {
+        case preset(Int64)
+        case custom
+    }
+
+    private let thresholds = LargeFileAnalyzer.thresholdPresets
+
+    private var isPresetThreshold: Bool {
+        thresholds.contains { $0.bytes == threshold }
+    }
+
+    private var thresholdChoice: Binding<ThresholdChoice> {
+        Binding(
+            get: { isCustomThreshold || !isPresetThreshold ? .custom : .preset(threshold) },
+            set: { choice in
+                switch choice {
+                case let .preset(bytes):
+                    isCustomThreshold = false
+                    threshold = bytes
+                case .custom:
+                    isCustomThreshold = true
+                    customThresholdMB = max(1, Int(threshold / 1_000_000))
+                }
+            }
+        )
+    }
 
     private var visibleFiles: [FileItem] {
         let filtered = files.filter {
@@ -68,15 +91,15 @@ struct LargeFilesView: View {
                 )
 
                 HStack(spacing: 12) {
-                    Picker("Minimum size", selection: $threshold) {
-                        ForEach(thresholds, id: \.1) { option in
-                            Text(option.0).tag(option.1)
+                    Picker("Minimum size", selection: thresholdChoice) {
+                        ForEach(thresholds, id: \.bytes) { option in
+                            Text(option.title).tag(ThresholdChoice.preset(option.bytes))
                         }
-                        Text("Custom").tag(Int64(customThresholdMB) * 1_000_000)
+                        Text("Custom").tag(ThresholdChoice.custom)
                     }
                     .frame(width: 150)
 
-                    if !thresholds.contains(where: { $0.1 == threshold }) {
+                    if isCustomThreshold || !isPresetThreshold {
                         Stepper(
                             "\(customThresholdMB) MB",
                             value: $customThresholdMB,
@@ -123,8 +146,9 @@ struct LargeFilesView: View {
                 Table(visibleFiles, selection: $selectedFileID) {
                     TableColumn("Name") { file in
                         HStack(spacing: 8) {
-                            Image(systemName: "doc")
+                            Image(systemName: file.isPackage ? "shippingbox" : "doc")
                                 .foregroundStyle(.secondary)
+                                .help(file.isPackage ? "Bundle, sized as one item" : "")
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(file.name).lineLimit(1)
                                 Text(file.url.deletingLastPathComponent().path(percentEncoded: false))
@@ -138,8 +162,16 @@ struct LargeFilesView: View {
                     .width(min: 260, ideal: 430)
 
                     TableColumn("Size") { file in
-                        Text(FileSizeFormatter.string(fromByteCount: file.size))
-                            .monospacedDigit()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(FileSizeFormatter.string(fromByteCount: file.size))
+                                .monospacedDigit()
+                            if file.isMostlyShared, let unique = file.uniqueSize {
+                                Text("\(FileSizeFormatter.string(fromByteCount: unique)) unique")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .help("Most of this file shares storage with APFS clones, so removing it frees about this much.")
+                            }
+                        }
                     }
                     .width(min: 90, ideal: 110)
 
@@ -177,6 +209,18 @@ struct LargeFilesView: View {
                         quickLook(file.url)
                     }
                 }
+                // Space previews the selected row only while the table has focus.
+                .onKeyPress(.space) {
+                    guard let selectedFile else { return .ignored }
+                    quickLook(selectedFile.url)
+                    return .handled
+                }
+            }
+        }
+        .onAppear {
+            if !isPresetThreshold {
+                isCustomThreshold = true
+                customThresholdMB = max(1, Int(threshold / 1_000_000))
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search files")

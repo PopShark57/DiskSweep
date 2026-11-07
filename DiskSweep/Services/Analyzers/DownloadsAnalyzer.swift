@@ -193,7 +193,7 @@ struct DownloadsAnalyzer: Sendable {
         progress: @escaping ScanProgressHandler = { _ in }
     ) async throws -> DownloadsAnalysis {
         let scanRoot = root.standardizedFileURL
-        CleanupSnapshotRegistry.shared.replace(
+        context.snapshots.replace(
             providerID: DownloadsProvider.analysisSnapshotProviderID,
             snapshots: [:]
         )

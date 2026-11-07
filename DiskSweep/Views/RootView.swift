@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 extension Notification.Name {
@@ -12,11 +13,13 @@ struct RootView: View {
             sidebar
         } detail: {
             detail
+                .environment(\.inUseItemNames, model.inUseItemNames)
         }
         .navigationSplitViewStyle(.balanced)
         .focusedSceneValue(
             \.diskSweepCommandActions,
             DiskSweepCommandActions(
+                isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
                 cancelScan: model.cancelCleanupScan,
                 focusSearch: {
@@ -28,7 +31,7 @@ struct RootView: View {
         )
         .sheet(isPresented: $model.showsCleanupReview) {
             CleanupReviewView(
-                items: model.selectedCleanupItems,
+                items: model.cleanupItems(in: model.pendingReviewScope),
                 isCleaning: model.isCleaning,
                 preferredUserFileDisposition: model.preferredUserFileDisposition,
                 clean: model.performCleanup(disposition:)
@@ -43,7 +46,13 @@ struct RootView: View {
             )
         ) {
             if let result = model.cleanupResult {
-                CleanupCompleteView(result: result, done: model.dismissCleanupResult)
+                CleanupCompleteView(
+                    result: result,
+                    done: model.dismissCleanupResult,
+                    reveal: model.revealInFinder,
+                    undo: model.undoLastCleanup,
+                    undoSummary: model.restoreSummary
+                )
             }
         }
         .alert(
@@ -59,6 +68,7 @@ struct RootView: View {
         } message: {
             Text(model.errorMessage ?? "An unexpected error occurred.")
         }
+        .quickLookPreview($model.quickLookURL)
         .task { await model.startup() }
     }
 
@@ -75,6 +85,13 @@ struct RootView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 5) {
                 Divider()
+                // Settings live in their own window (⌘,), not in the detail column.
+                SettingsLink {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
                 HStack(spacing: 7) {
                     Image(systemName: "internaldrive")
                         .foregroundStyle(.secondary)
@@ -126,7 +143,7 @@ struct RootView: View {
                 scanWasCancelled: model.lastScanWasCancelled,
                 scan: model.startCleanupScan,
                 cancelScan: model.cancelCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) }
             )
 
         case .smartCleanup:
@@ -138,7 +155,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.allScanLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .applicationCaches:
@@ -147,13 +166,14 @@ struct RootView: View {
                 subtitle: "Disposable caches only—never profiles, sessions, preferences, cookies, or application support data.",
                 symbol: "app.badge",
                 categories: model.categories.filter {
-                    [.userCaches, .applicationCaches, .browserCaches, .electronAppCaches]
-                        .contains($0.location)
+                    CleanupScope.applicationCacheLocations.contains($0.location)
                 },
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.applicationCacheLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .developerFiles:
@@ -165,7 +185,14 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations(CleanupScope.developerLocations)) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder,
+                accessory: AnyView(SimulatorPanel(
+                    check: model.simulatorCheck,
+                    checkNow: model.checkUnavailableSimulators,
+                    deleteAll: model.deleteUnavailableSimulators
+                ))
             )
 
         case .downloads:
@@ -175,9 +202,10 @@ struct RootView: View {
                 isScanning: model.isAnalyzing(.downloads),
                 scan: model.startDownloadsAnalysis,
                 cancel: model.cancelAnalysis,
-                reviewCleanup: model.requestCleanupReview,
+                reviewCleanup: { model.requestCleanupReview(scope: .downloads) },
                 reveal: model.revealInFinder,
-                quickLook: model.quickLook
+                quickLook: model.quickLook,
+                reportVisibleFileIDs: { model.downloadsVisibleFileIDs = $0 }
             )
 
         case .trash:
@@ -186,7 +214,9 @@ struct RootView: View {
                 selectedItemIDs: $model.selectedCleanupItemIDs,
                 isScanning: model.isCleanupScanning,
                 scan: model.startCleanupScan,
-                reviewCleanup: model.requestCleanupReview
+                reviewCleanup: { model.requestCleanupReview(scope: .locations([.trash])) },
+                quickLook: model.quickLook,
+                reveal: model.revealInFinder
             )
 
         case .largeFiles:
@@ -199,15 +229,6 @@ struct RootView: View {
                 cancel: model.cancelAnalysis,
                 reveal: model.revealInFinder,
                 quickLook: model.quickLook
-            )
-
-        case .largeFolders:
-            LargeFoldersView(
-                roots: model.largeFolderRoot?.children ?? [],
-                isScanning: model.isAnalyzing(.folders),
-                scan: model.startFolderAnalysis,
-                cancel: model.cancelAnalysis,
-                reveal: model.revealInFinder
             )
 
         case .duplicates:
@@ -231,10 +252,13 @@ struct RootView: View {
             )
 
         case .history:
-            HistoryView(entries: model.history.entries)
-
-        case .settings:
-            SettingsView(settings: model.settings, permissions: model.permissions)
+            HistoryView(
+                entries: model.history.entries,
+                persistenceError: model.history.lastPersistenceError,
+                deleteEntry: model.deleteHistoryEntry,
+                clearHistory: model.clearHistory,
+                putBack: model.putBack
+            )
         }
     }
 }

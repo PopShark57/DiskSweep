@@ -3,6 +3,7 @@ import XCTest
 @testable import DiskSweep
 
 final class DuplicateAnalyzerTests: XCTestCase {
+    private let snapshots = CleanupSnapshotRegistry()
     func testDuplicateDetectionUsesStagedComparisonAndFindsExactCopies() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         let duplicateData = Data(repeating: 0x2A, count: 256 * 1_024)
@@ -12,7 +13,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         try temporary.file("C/different.bin", data: sameSizeDifferentSample)
         try temporary.file("unique.bin", data: Data(repeating: 0x2A, count: 127))
 
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
         let analyzer = DuplicateAnalyzer(
             sampleByteCount: 1_024,
             readChunkByteCount: 4_096,
@@ -28,15 +29,43 @@ final class DuplicateAnalyzerTests: XCTestCase {
         XCTAssertEqual(result.reclaimableSize, Int64(duplicateData.count))
         XCTAssertEqual(result.diagnostics.sizeCandidateFiles, 3)
         XCTAssertEqual(result.diagnostics.sampledFiles, 3)
-        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 2)
+        // 5.4: a sample-matched pair is compared byte for byte without hashing first.
+        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 0)
         XCTAssertEqual(result.diagnostics.byteForByteComparisons, 1)
+    }
+
+    /// 5.4: groups of three or more still hash before the byte-for-byte check, and a pair
+    /// whose bytes differ after matching samples is not reported.
+    func testTriplesStillHashAndPairsAreStillConfirmedByBytes() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 0x33, count: 64 * 1_024)
+        try temporary.file("One/a.bin", data: data)
+        try temporary.file("Two/b.bin", data: data)
+        try temporary.file("Three/c.bin", data: data)
+        // Same size and same sampled bytes (start, middle, end), different in between.
+        var nearCopy = Data(repeating: 0x44, count: 48 * 1_024)
+        let nearCopyOriginal = nearCopy
+        nearCopy[20_000] = 0x45
+        try temporary.file("Four/d.bin", data: nearCopyOriginal)
+        try temporary.file("Five/e.bin", data: nearCopy)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer(sampleByteCount: 512).scan(
+            root: temporary.url,
+            context: context
+        )
+
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertEqual(Set(result.groups[0].files.map(\.name)), ["a.bin", "b.bin", "c.bin"])
+        XCTAssertEqual(result.diagnostics.cryptographicallyHashedFiles, 3)
+        XCTAssertEqual(result.diagnostics.byteForByteComparisons, 2 + 1)
     }
 
     func testMatchingNamesAndSizesAreNotEnough() async throws {
         let temporary = try AnalyzerTemporaryDirectory()
         try temporary.file("A/report.dat", data: Data(repeating: 1, count: 4_096))
         try temporary.file("B/report.dat", data: Data(repeating: 2, count: 4_096))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer(sampleByteCount: 128).scan(
             root: temporary.url,
@@ -60,7 +89,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
             at: temporary.url.appendingPathComponent("link.bin"),
             withDestinationURL: visible
         )
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
 
@@ -77,12 +106,54 @@ final class DuplicateAnalyzerTests: XCTestCase {
             to: temporary.url.appendingPathComponent("alias.bin")
         )
         try temporary.file("independent-copy.bin", data: data)
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+
+        // 2.5 (D12), approved change to this test: the hard-linked pair is one file on disk,
+        // so only one of its names is reported, next to the real copy. The pair itself is
+        // never reported as two reclaimable copies.
+        XCTAssertEqual(result.groups.count, 1)
+        let names = Set(try XCTUnwrap(result.groups.first).files.map(\.name))
+        XCTAssertEqual(names.count, 2)
+        XCTAssertTrue(names.contains("independent-copy.bin"))
+        XCTAssertEqual(names.intersection(["original.bin", "alias.bin"]).count, 1)
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+        XCTAssertEqual(result.reclaimableSize, Int64(data.count))
+    }
+
+    /// 2.5 (D12): a lone hard-link pair still produces no group.
+    func testLoneHardLinkPairIsNotReportedAsDuplicates() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let original = try temporary.file("original.bin", data: Data(repeating: 9, count: 8_192))
+        try FileManager.default.linkItem(at: original, to: temporary.url.appendingPathComponent("alias.bin"))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
 
         XCTAssertTrue(result.groups.isEmpty)
-        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 2)
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+    }
+
+    /// 2.5 (D12): A and its hard link A' plus a real copy B form one group with the
+    /// shallowest alias as the representative, and the copy to keep is never the only one.
+    func testHardLinkedFileWithARealCopyIsReported() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 3, count: 16_384)
+        let original = try temporary.file("Deep/Nested/A.bin", data: data)
+        try FileManager.default.linkItem(at: original, to: temporary.url.appendingPathComponent("Shallow-A.bin"))
+        try temporary.file("Copies/B.bin", data: data)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+        let analyzer = DuplicateAnalyzer()
+
+        let result = try await analyzer.scan(root: temporary.url, context: context)
+
+        let group = try XCTUnwrap(result.groups.first)
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertEqual(Set(group.files.map(\.name)), ["Shallow-A.bin", "B.bin"])
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+        let everyID = Set(group.files.map(\.id))
+        XCTAssertEqual(analyzer.selectionPreservingOneCopy(everyID, in: group).count, 1)
     }
 
     func testSelectionHelpersAlwaysPreserveAtLeastOneCopy() async throws {
@@ -91,7 +162,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         try temporary.file("A.bin", data: data)
         try temporary.file("B.bin", data: data)
         try temporary.file("C.bin", data: data)
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
         let analyzer = DuplicateAnalyzer()
         let result = try await analyzer.scan(root: temporary.url, context: context)
         let group = try XCTUnwrap(result.groups.first)
@@ -109,7 +180,7 @@ final class DuplicateAnalyzerTests: XCTestCase {
         let temporary = try AnalyzerTemporaryDirectory()
         let nested = try temporary.directory("Nested")
         try temporary.file("Nested/only.bin", data: Data(repeating: 1, count: 1_024))
-        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
 
         let result = try await DuplicateAnalyzer().scan(
             roots: [temporary.url, nested],
@@ -118,5 +189,25 @@ final class DuplicateAnalyzerTests: XCTestCase {
 
         XCTAssertEqual(result.filesAnalyzed, 1)
         XCTAssertTrue(result.groups.isEmpty)
+    }
+
+    /// F4: clones are still duplicates, but each reports almost no unique size.
+    func testClonedCopiesReportTheirUniqueSize() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let original = try temporary.file("A/original.bin", data: Data((0..<200_000).map { UInt8(truncatingIfNeeded: $0 &* 7) }))
+        let clone = temporary.url.appendingPathComponent("B/clone.bin")
+        try FileManager.default.createDirectory(at: clone.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let status = original.withUnsafeFileSystemRepresentation { source in
+            clone.withUnsafeFileSystemRepresentation { clonefile(source!, $0!, 0) }
+        }
+        XCTAssertEqual(status, 0)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+
+        let files = try XCTUnwrap(result.groups.first?.files)
+        XCTAssertEqual(files.count, 2)
+        XCTAssertTrue(files.allSatisfy { ($0.uniqueSize ?? .max) < 4_096 })
+        XCTAssertTrue(files.allSatisfy(\.isMostlyShared))
     }
 }

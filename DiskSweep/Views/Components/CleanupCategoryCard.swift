@@ -6,6 +6,7 @@ struct CleanupCategoryCard: View {
     var searchText: String = ""
 
     @State private var isExpanded = false
+    @State private var showsIssues = false
 
     private var visibleItems: [CleanupItem] {
         guard !searchText.isEmpty else { return category.items }
@@ -28,9 +29,10 @@ struct CleanupCategoryCard: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 ForEach(visibleItems) { item in
-                    itemRow(item)
+                    CleanupItemRow(item: item, isChecked: checkBinding(item))
+                        .padding(.vertical, 4)
                     if item.id != visibleItems.last?.id { Divider() }
                 }
 
@@ -41,12 +43,17 @@ struct CleanupCategoryCard: View {
                 }
 
                 if !category.issues.isEmpty {
-                    Label(
-                        "\(category.issues.count) location\(category.issues.count == 1 ? "" : "s") could not be read",
-                        systemImage: "lock.trianglebadge.exclamationmark"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    DisclosureGroup(isExpanded: $showsIssues) {
+                        IssueList(issues: category.issues)
+                            .padding(.top, 6)
+                    } label: {
+                        Label(
+                            "\(category.issues.count) location\(category.issues.count == 1 ? "" : "s") could not be read",
+                            systemImage: "lock.trianglebadge.exclamationmark"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                     .padding(.top, 12)
                 }
             }
@@ -106,54 +113,14 @@ struct CleanupCategoryCard: View {
         .cardSurface()
     }
 
-    private func itemRow(_ item: CleanupItem) -> some View {
-        HStack(spacing: 12) {
-            Toggle(
-                isOn: Binding(
-                    get: { selectedItemIDs.contains(item.id) },
-                    set: { isSelected in
-                        if isSelected { selectedItemIDs.insert(item.id) }
-                        else { selectedItemIDs.remove(item.id) }
-                    }
-                )
-            ) {
-                EmptyView()
+    private func checkBinding(_ item: CleanupItem) -> Binding<Bool> {
+        Binding(
+            get: { selectedItemIDs.contains(item.id) },
+            set: { isSelected in
+                if isSelected { selectedItemIDs.insert(item.id) }
+                else { selectedItemIDs.remove(item.id) }
             }
-            .toggleStyle(.checkbox)
-            .labelsHidden()
-            .disabled(!item.isDeletable)
-            .accessibilityLabel("Select \(item.name)")
-
-            Image(systemName: item.kind == .directory ? "folder" : "doc")
-                .foregroundStyle(.secondary)
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .lineLimit(1)
-                Text(item.url.path(percentEncoded: false))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let detail = item.detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                }
-            }
-
-            Spacer()
-
-            Text(FileSizeFormatter.string(fromByteCount: item.size))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .help(item.explanation)
+        )
     }
 
     private func selectCategory(_ isSelected: Bool) {

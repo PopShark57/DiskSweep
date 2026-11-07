@@ -5,17 +5,20 @@ struct CleanupAuthorization: Sendable {
     let location: CleanupLocation
     let allowedRoots: [URL]
     let requiresSnapshot: Bool
+    let ruleContext: CleanupRuleContext
 
     init(
         providerID: String,
         location: CleanupLocation,
         allowedRoots: [URL],
-        requiresSnapshot: Bool = false
+        requiresSnapshot: Bool = false,
+        ruleContext: CleanupRuleContext = CleanupRuleContext()
     ) {
         self.providerID = providerID
         self.location = location
         self.allowedRoots = allowedRoots
         self.requiresSnapshot = requiresSnapshot
+        self.ruleContext = ruleContext
     }
 
     init(provider: any CleanupProvider) {
@@ -23,21 +26,54 @@ struct CleanupAuthorization: Sendable {
             providerID: provider.id,
             location: provider.location,
             allowedRoots: provider.allowedRoots,
-            requiresSnapshot: true
+            requiresSnapshot: true,
+            ruleContext: provider.ruleContext
         )
     }
 }
 
-actor CleanupEngine {
+/// The cleanup operation the view model depends on, so tests can observe exactly which items
+/// a review would clean without touching the filesystem.
+protocol CleanupPerforming: Sendable {
+    func clean(
+        _ items: [CleanupItem],
+        providers: [any CleanupProvider],
+        disposition: CleanupDisposition?,
+        exclusions: [URL]
+    ) async -> CleanupResult
+}
+
+actor CleanupEngine: CleanupPerforming {
+    /// Moves a validated item to the Trash and returns where it ended up, if known.
+    typealias TrashMover = @Sendable (URL) throws -> URL?
+
+    /// The system Trash, through `FileManager.trashItem`.
+    static let systemTrashMover: TrashMover = { url in
+        var resultingURL: NSURL?
+        try FileManager().trashItem(at: url, resultingItemURL: &resultingURL)
+        return resultingURL as URL?
+    }
+
     private let safetyValidator: SafetyValidator
     private let diskService: DiskService
+    private let snapshots: CleanupSnapshotRegistry
+    private let trashMover: TrashMover
+    /// Test hook: runs right before a permanent removal, after the final revalidation, to
+    /// simulate a concurrent change in that window.
+    private let beforePermanentRemoval: (@Sendable (URL) -> Void)?
 
     init(
         safetyValidator: SafetyValidator = SafetyValidator(),
-        diskService: DiskService = DiskService()
+        diskService: DiskService = DiskService(),
+        snapshots: CleanupSnapshotRegistry = .shared,
+        trashMover: @escaping TrashMover = CleanupEngine.systemTrashMover,
+        beforePermanentRemoval: (@Sendable (URL) -> Void)? = nil
     ) {
         self.safetyValidator = safetyValidator
         self.diskService = diskService
+        self.snapshots = snapshots
+        self.trashMover = trashMover
+        self.beforePermanentRemoval = beforePermanentRemoval
     }
 
     func clean(
@@ -61,12 +97,14 @@ actor CleanupEngine {
         exclusions: [URL] = []
     ) async -> CleanupResult {
         let startedAt = Date()
-        let availableBefore = await availableCapacity()
+        let before = await capacitySnapshot()
         let authorizationMap = Dictionary(
             authorizations.map { ($0.providerID, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let validator = safetyValidator
+        let moveToTrash = trashMover
+        let removalHook = beforePermanentRemoval
 
         let orderedItems = deduplicated(items).sorted {
             $0.url.standardizedFileURL.pathComponents.count
@@ -82,53 +120,34 @@ actor CleanupEngine {
             }
 
             if removedDirectories.contains(where: {
-                Self.isStrictDescendant(item.url.standardizedFileURL, of: $0)
+                item.url.standardizedFileURL.isStrictDescendant(of: $0)
             }) {
                 continue
             }
 
             guard item.isDeletable else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "This item is informational and is not marked as deletable."
-                ))
+                failures.append(Self.failure(for: item, reason: "This item is informational and is not marked as deletable."))
                 continue
             }
 
             guard let authorization = authorizationMap[item.providerID] else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The cleanup provider did not supply an allowlisted root."
-                ))
+                failures.append(Self.failure(for: item, reason: "The cleanup provider did not supply an allowlisted root."))
                 continue
             }
 
             guard authorization.location == item.location else {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The item does not match its cleanup provider's category."
-                ))
+                failures.append(Self.failure(for: item, reason: "The item does not match its cleanup provider's category."))
                 continue
             }
 
-            let itemDisposition = resolvedDisposition(
-                for: item,
-                requested: disposition
-            )
-            let permittedNestedNames = Self.permittedNestedNames(for: item.location)
-            let scanSnapshot = CleanupSnapshotRegistry.shared.snapshot(
+            let itemDisposition = Self.disposition(for: item, requested: disposition)
+            let permittedNestedNames = item.location.permittedNestedNames
+            let scanSnapshot = snapshots.snapshot(
                 providerID: item.providerID,
                 itemID: item.id
             )
             if authorization.requiresSnapshot, scanSnapshot == nil {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: "The scan-time file identity is unavailable. Rescan before cleaning this item."
-                ))
+                failures.append(Self.failure(for: item, reason: "The scan-time file identity is unavailable. Rescan before cleaning this item."))
                 continue
             }
 
@@ -146,7 +165,11 @@ actor CleanupEngine {
                         throw SafetyValidationError.targetChanged(item.url.path)
                     }
                     if let scanSnapshot,
-                       firstValidation.identity != scanSnapshot.identity {
+                       !Self.identity(
+                           firstValidation.identity,
+                           matches: scanSnapshot.identity,
+                           policy: item.location.identityMatching
+                       ) {
                         throw SafetyValidationError.targetChanged(item.url.path)
                     }
 
@@ -158,12 +181,18 @@ actor CleanupEngine {
                         location: item.location,
                         allowedRoots: authorization.allowedRoots
                     )
-                    try validator.validateDirectoryContents(
+                    try Log.signposter.withIntervalSignpost("Validate contents") {
+                        try validator.validateDirectoryContents(
+                            validated,
+                            exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
+                            permittedNestedNames: permittedNestedNames
+                        )
+                    }
+                    try Self.requireStillQualifies(
                         validated,
-                        exclusionRoots: (scanSnapshot?.exclusionRoots ?? []) + exclusions,
-                        permittedNestedNames: permittedNestedNames
+                        location: item.location,
+                        ruleContext: authorization.ruleContext
                     )
-                    try Self.requireStillQualifies(validated, location: item.location)
                     validated = try validator.revalidate(
                         validated,
                         location: item.location,
@@ -171,18 +200,19 @@ actor CleanupEngine {
                     )
                     try Task.checkCancellation()
 
-                    let manager = FileManager()
+                    var trashURL: URL?
                     switch itemDisposition {
                     case .permanent:
-                        try manager.removeItem(at: validated.deletionURL)
+                        removalHook?(validated.deletionURL)
+                        // Descriptor-relative, so a folder swapped for a link after the
+                        // revalidation above can't redirect the removal (7.5).
+                        try SecureRemoval.removeItem(validated)
                     case .trash:
-                        try manager.trashItem(
-                            at: validated.deletionURL,
-                            resultingItemURL: nil
-                        )
+                        // Recorded so the move can be undone (Undo, or Put Back in History).
+                        trashURL = try moveToTrash(validated.deletionURL)
                     }
 
-                    return validated
+                    return (validated: validated, trashURL: trashURL)
                 }
                 let outcome = try await withTaskCancellationHandler {
                     try await deletionTask.value
@@ -195,46 +225,59 @@ actor CleanupEngine {
                     location: item.location,
                     bytes: item.size,
                     fileCount: item.fileCount,
-                    disposition: itemDisposition
+                    disposition: itemDisposition,
+                    originalPath: outcome.trashURL == nil ? nil : outcome.validated.deletionURL.path,
+                    trashURL: outcome.trashURL
                 ))
-                if outcome.identity.kind == .directory {
-                    removedDirectories.append(outcome.deletionURL)
+                if outcome.validated.identity.kind == .directory {
+                    removedDirectories.append(outcome.validated.deletionURL)
                 }
             } catch is CancellationError {
-                CleanupSnapshotRegistry.shared.remove(
+                snapshots.remove(
                     providerID: item.providerID,
                     itemID: item.id
                 )
                 break
             } catch {
-                failures.append(CleanupFailure(
-                    itemName: item.name,
-                    path: item.url.path,
-                    reason: error.localizedDescription
-                ))
+                failures.append(Self.failure(for: item, reason: error.localizedDescription))
             }
-            CleanupSnapshotRegistry.shared.remove(
+            snapshots.remove(
                 providerID: item.providerID,
                 itemID: item.id
             )
         }
 
-        let availableAfter = await availableCapacity()
+        let after = await capacitySnapshot()
+        Log.cleanup.info(
+            "Cleanup finished: \(cleaned.count, privacy: .public) cleaned, \(failures.count, privacy: .public) not cleaned"
+        )
         return CleanupResult(
             startedAt: startedAt,
             finishedAt: Date(),
-            availableBefore: availableBefore,
-            availableAfter: availableAfter,
+            availableBefore: before.available,
+            availableAfter: after.available,
+            availableBeforeExcludingPurgeable: before.excludingPurgeable,
+            availableAfterExcludingPurgeable: after.excludingPurgeable,
             cleanedItems: cleaned,
             failures: failures
         )
     }
 
-    private func availableCapacity() async -> Int64 {
-        (try? await diskService.statistics())?.available ?? 0
+    private static func failure(for item: CleanupItem, reason: String) -> CleanupFailure {
+        Log.cleanupRefused(item, reason: reason)
+        return CleanupFailure(itemName: item.name, path: item.url.path, reason: reason)
     }
 
-    private func resolvedDisposition(
+    private func capacitySnapshot() async -> (available: Int64, excludingPurgeable: Int64?) {
+        guard let statistics = try? await diskService.statistics() else { return (0, nil) }
+        return (statistics.available, statistics.availableExcludingPurgeable)
+    }
+
+    /// How an item is removed. The review sheet shows this same value, so what it says
+    /// matches what the engine does: Trash items are always deleted permanently; user files
+    /// and Trash-first developer folders follow the request and default to the Trash;
+    /// everything else, such as caches, is deleted permanently.
+    static func disposition(
         for item: CleanupItem,
         requested: CleanupDisposition?
     ) -> CleanupDisposition {
@@ -245,19 +288,12 @@ actor CleanupEngine {
         return .permanent
     }
 
-    private static func permittedNestedNames(for location: CleanupLocation) -> Set<String> {
-        switch location {
-        case .projectArtifacts: ProjectArtifactRules.permittedNestedNames
-        case .staleIDEVersions: StaleIDEVersionRules.permittedNestedNames
-        default: []
-        }
-    }
-
     /// Locations chosen by rules rather than by a fixed folder repeat those rules right before
     /// removal, because a marker, a newer version, or an emulator may have changed since the scan.
     private static func requireStillQualifies(
         _ validated: ValidatedCleanupTarget,
-        location: CleanupLocation
+        location: CleanupLocation,
+        ruleContext: CleanupRuleContext
     ) throws {
         let url = validated.deletionURL
         switch location {
@@ -274,7 +310,11 @@ actor CleanupEngine {
                 throw SafetyValidationError.noLongerQualifies(url.path)
             }
         case .androidSystemImages:
-            if !AndroidSystemImageRules.isRemovable(url, approvedRoot: validated.approvedRoot) {
+            if !AndroidSystemImageRules.isRemovable(
+                url,
+                approvedRoot: validated.approvedRoot,
+                avdDirectory: ruleContext.androidAVDDirectory
+            ) {
                 throw SafetyValidationError.noLongerQualifies(url.path)
             }
         default:
@@ -289,11 +329,20 @@ actor CleanupEngine {
         }
     }
 
-    private static func isStrictDescendant(_ candidate: URL, of root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        let rootComponents = root.standardizedFileURL.pathComponents
-        guard candidateComponents.count > rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+    /// Compares a target with its scan-time identity under the location's policy.
+    static func identity(
+        _ current: FileIdentity,
+        matches scanned: FileIdentity,
+        policy: CleanupLocation.IdentityMatching
+    ) -> Bool {
+        switch policy {
+        case .strict:
+            current == scanned
+        case .stableObject:
+            current.device == scanned.device
+                && current.inode == scanned.inode
+                && current.kind == scanned.kind
+        }
     }
 
     private static func matchesScannedMetadata(
@@ -302,7 +351,13 @@ actor CleanupEngine {
     ) -> Bool {
         guard identity.kind == item.kind else { return false }
 
-        if let modifiedAt = item.modifiedAt,
+        // An active cache folder's modification time changes whenever its app adds an entry;
+        // for those locations the folder only has to be the same object (see
+        // `CleanupLocation.identityMatching`). Files are always checked.
+        let skipsFolderTimestamp = item.kind == .directory
+            && item.location.identityMatching == .stableObject
+        if !skipsFolderTimestamp,
+           let modifiedAt = item.modifiedAt,
            Int64(modifiedAt.timeIntervalSince1970) != identity.modificationTime {
             return false
         }

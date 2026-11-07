@@ -27,24 +27,29 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 ### Cleanup discovery and analysis
 
 - Cleanup providers for explicit user-scoped roots: user and application caches, logs, current-user temporary files, Trash, browser caches, Electron app caches, Downloads, Xcode DerivedData and archives, simulator caches, Xcode Device Support, Swift Package Manager caches, Homebrew downloads, and package manager caches.
+- Unavailable simulators: Developer Files can check for simulators whose runtime is no longer installed (`xcrun simctl list devices unavailable -j`) and, after confirmation, remove them with `xcrun simctl delete unavailable`. DiskSweep runs the tool with fixed arguments and a timeout, never through a shell, and never deletes simulator paths itself.
 - Xcode Device Support beta builds that a release build of the same OS version has replaced are preselected; other Device Support folders still require review.
+- Running-app awareness: cache items that appear to belong to an app that's running (matched by bundle ID, or by app name for browser and Electron caches) aren't preselected and are marked **In use**, because the app may recreate them right away. This only warns; you can still select them.
 - Electron and Chromium-based app caches (for example Visual Studio Code, Slack, Discord, Teams) in `~/Library/Application Support/<App>`. An app folder is only recognized when Chromium's `Local State` file is present, and only Chromium cache folders such as `Cache`, `Code Cache`, `GPUCache`, and shader caches are offered—never Local Storage, IndexedDB, cookies, or Service Worker data.
-- Package manager caches that live outside `~/Library/Caches`: npm, pnpm, Yarn Berry, Bun, pip, uv, pre-commit, Cargo, Gradle, CocoaPods, Composer, and node-gyp. The uv cache is never preselected because uv can be configured to symlink environments into it. Maven's local repository, Go's module cache, and conda's package cache are deliberately left out.
+- Package manager caches that live outside `~/Library/Caches`: npm, pnpm, Yarn Berry, Bun, pip, uv, pre-commit, Cargo, Gradle, CocoaPods, Composer, and node-gyp. Poetry's `~/Library/Caches/pypoetry` is handled here instead of in User Caches, because it also holds Poetry's virtual environments: only its `cache` and `artifacts` folders are offered, never `virtualenvs`. The uv cache and Cargo Git checkouts are never preselected: uv can be configured to symlink environments into its cache, and a Git checkout could hold local commits. Maven's local repository, Go's module cache, and conda's package cache are deliberately left out.
 - Old IDE versions: per-version JetBrains and Android Studio folders in `~/Library/Application Support/JetBrains` and `~/Library/Application Support/Google` that a newer version of the same product (or, for PyCharm and IntelliJ IDEA Community, the unified product) has replaced, and that have not been used for 30 days. They are never preselected and move to the Trash by default.
-- Unused Android emulator system images in `~/Library/Android/sdk/system-images` that no virtual device in `~/.android/avd` boots. If any virtual device's configuration can't be read, no image is offered.
+- Unused Android emulator system images in `~/Library/Android/sdk/system-images` (or the SDK folder chosen in Settings) that no virtual device in `~/.android/avd` (or the chosen device folder) boots. A custom SDK folder is accepted only if it contains `platform-tools`, `licenses`, or `emulator` and is inside your home folder outside protected locations; the chosen device folder is also used for the recheck right before removal. If any virtual device's configuration can't be read, no image is offered.
 - Project build artifacts in idle projects, limited to project folders the user adds under **Settings > Developer**. See [Project build artifacts](#project-build-artifacts).
 - Log cleanup is limited to individual files that have remained unchanged for at least 30 days; active logs and whole log directories are never offered, and old logs still require review.
 - Large-file discovery with configurable thresholds.
 - Hierarchical large-folder and disk-usage analysis rooted at the user's home directory.
+- Bundles (apps, virtual machines, Final Cut and iMovie libraries, sparse bundles, `.xcarchive` folders, and other packages) count toward their folder's total and appear as one item with their full size in Large Folders, Disk Usage, Large Files, and Downloads, controlled by **Settings > Exclusions > Treat bundles as single items**. Duplicates still skips them, and bundles in Downloads are shown for review but can't be cleaned. Photo libraries and Time Machine data remain fully excluded.
 - Downloads grouping for disk images, archives, installers, videos, images, documents, and other files, with age and size filters. Downloads are never preselected.
-- Staged duplicate detection: size grouping, partial sampling, SHA-256 hashing, and final byte-for-byte confirmation. Hard-link aliases are excluded and selection helpers preserve at least one copy.
+- APFS clone awareness: Large Files and Duplicates read each result's private (unshared) size with `getattrlist(ATTR_CMNEXT_PRIVATESIZE)`. When most of a file shares storage with clones, the row shows how much is unique, which is about what removing it would free.
+- Staged duplicate detection: size grouping, partial sampling, SHA-256 hashing, and final byte-for-byte confirmation. Hard links count as one file: only one name per linked file is compared (the shallowest), so a hard-linked file with a real copy elsewhere is still reported, while a lone hard-link pair isn't. Selection helpers preserve at least one copy.
 - Risk classification for regeneratable data, items needing review, and user-created files.
 
 ### Cleanup and local state
 
+- Each screen's Review button reviews and cleans exactly what that screen's footer counted: Overview and Smart Cleanup cover every scanned category, Application Caches and Developer Files cover only their own categories, Trash covers only Trash, and Downloads covers only the Downloads files you selected that the current age, size, and search filters show (the footer says how many selected files the filters hide). Selections on other screens are kept. In the review sheet, each category expands to list every item with its path and size, and a badge says whether that category is deleted permanently or moved to the Trash, computed by the same rule the cleanup engine uses.
 - A centralized cleanup engine that accepts provider-specific authorizations and uses `FileManager` for Trash or permanent removal.
 - A final identity and boundary revalidation immediately before each filesystem mutation.
-- Cleanup results and history distinguish bytes moved to Trash from capacity actually recovered; same-volume Trash moves are never credited as free space.
+- Cleanup results and history distinguish bytes moved to Trash from capacity actually recovered; same-volume Trash moves are never credited as free space. Recovered space is an estimate measured with free space that excludes purgeable space; when much less is measured than was deleted, the completion sheet explains that local snapshots may still hold it or that the volume may still be freeing it.
 - Local settings stored in `UserDefaults`, including general behavior, scan locations, exclusions, developer categories, and privacy preferences. Cleanup categories added in an update start out enabled for existing settings, and categories you turn off stay off.
 - Bounded cleanup history stored as atomically written JSON at:
 
@@ -52,14 +57,34 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
   ~/Library/Application Support/DiskSweep/cleanup-history.json
   ```
 
+- Undo and Put Back: when a cleanup moves items to the Trash, it records where each one went. The completion sheet offers **Undo**, and History offers **Put Back** for past cleanups. An item is only moved back if it's still in a Trash folder, its original folder still exists, and nothing has taken its original name; DiskSweep never overwrites a file to restore one. Permanent deletions and emptied Trash items can't be put back.
+- History can be managed in the app: delete one entry (trash button or context menu) or clear it all (**Clear History…**). Turning off **Keep local cleanup history** offers to delete the existing history file.
+- Settings and history load tolerantly. A category this build doesn't know (for example after a downgrade) is dropped instead of discarding everything, and one damaged history entry doesn't discard the others. An unreadable history file is moved aside as `cleanup-history.unreadable-<date>.json` before anything is written, and unreadable settings are kept under `com.disksweep.settings.v1.unreadable`; if the history file can't be moved aside, history becomes read-only rather than overwriting it. The History and Settings screens show these problems in a banner.
+- An optional menu bar extra (**Settings > General > Show in menu bar**) shows free space and offers Scan and Open DiskSweep. An optional low-space notification posts once when free space drops below a threshold you choose (5–100 GB) and again only after it recovers. Both refresh every 15 minutes at utility priority.
 - Native Finder reveal and Quick Look support.
 - A conservative Full Disk Access status explanation and a native link to the corresponding System Settings pane.
 
 ### Interface components
 
-The native SwiftUI application coordinator connects sidebar navigation, real scan progress, cancellation, incremental results, cleanup selection, review, execution, completion, history, settings, Finder reveal, and Quick Look. Dedicated screens cover storage overview, Smart Cleanup, application and developer caches, Downloads, Trash, large files, large folders, duplicates, disk usage, cleanup history, and settings.
+The native SwiftUI application coordinator connects sidebar navigation, real scan progress, cancellation, incremental results, cleanup selection, review, execution, completion, history, settings, Finder reveal, and Quick Look. Dedicated screens cover storage overview, Smart Cleanup, application and developer caches, Downloads, Trash, large files, duplicates, disk usage (one screen with a List mode for the largest folders and a Map mode to drill in, with a donut chart of the current folder, since both use the same analysis), and cleanup history. Settings open in their own window from the sidebar's Settings link or with ⌘,.
 
-The interface uses standard macOS navigation, materials, menus, shortcuts, light/dark appearance, selection controls, and accessibility labels. A cancelled cleanup scan retains completed categories and labels them as partial results rather than presenting them as a complete scan.
+The interface uses standard macOS navigation, materials, menus, shortcuts, light/dark appearance, selection controls, and accessibility labels. A cancelled cleanup scan retains completed categories and labels them as partial results rather than presenting them as a complete scan. **Cancel Scan** is available only while a scan runs, and starting a new scan right after cancelling waits for the cancelled one to stop, so the two never mix results.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘R | Scan |
+| ⌘. | Cancel Scan (only while a scan runs) |
+| ⌘F | Find (focus the search field) |
+| ⌘Y | Quick Look the selected file |
+| Space | In Large Files: Quick Look. In the cleanup, Trash, Downloads, and Duplicates lists: check or uncheck the highlighted rows |
+| Return or double-click | Quick Look the highlighted row in any list |
+| ↑ ↓, ⌘A | Move or extend the highlight in a list |
+| ⇧⌘F | Reveal the selected file in Finder |
+| ⌘, | Settings |
+
+Space and Esc are never menu shortcuts, so they keep working in search fields. In lists, the highlight (arrow keys, ⌘A) and the checkboxes are separate: only checked items are reviewed and cleaned. Each list row also has a context menu with Quick Look and Reveal in Finder.
 
 ## Screenshots
 
@@ -79,9 +104,11 @@ A scan never deletes anything. Cleanup candidates retain their provider identity
 2. Canonicalizes the provider's approved roots and requires a user-scoped location.
 3. Refuses the approved root itself, direct symbolic-link targets, cross-volume targets, and anything outside the authorized root.
 4. Blocks protected system and user locations, including system directories, Documents, Desktop, media libraries, credentials, mail, messages, browser data, cloud storage, backups, and non-cache Application Support data.
-5. Records exact scan-time device, inode, size, allocation, modification-time, change-time, and file-kind identity for every provider cleanup candidate—including Downloads analyzer results.
+5. Records exact scan-time device, inode, size, allocation, modification-time, change-time, and file-kind identity for every provider cleanup candidate—including Downloads analyzer results. Before cleanup, the item must still match that identity. Regenerable caches under fixed roots (User, Application, Browser, and Electron caches, DerivedData, Swift Package, Homebrew, and package-manager caches) only need to be the same object (device, inode, and kind), because an app that's running keeps adding entries to its cache folder, which changes the folder's timestamps. A cache folder replaced by a different one is still refused, files are still checked exactly, and every other location, including Downloads, logs, and rule-based locations, keeps the exact match.
 6. Revalidates that identity, active exclusions, directory descendants, and volume boundaries immediately before mutation to reduce time-of-check/time-of-use risk.
-7. Uses native `FileManager` operations—never path-interpolated shell deletion commands.
+7. Removes permanently with descriptor-relative `openat`/`unlinkat` that never follows a symbolic link, and moves to the Trash with `FileManager`—never path-interpolated shell deletion commands.
+
+A folder that contains version-control metadata (`.git`, `.svn`) or `node_modules` is never removed as a unit, with narrow per-category exceptions that the scan and the cleanup engine share. Xcode DerivedData and package-manager caches may contain `.git`, because Xcode clones Swift package dependencies into `DerivedData/<Project>/SourcePackages/checkouts` and Cargo and CocoaPods keep Git clones in their caches; a user repository can't legitimately live there. Cargo Git checkouts are offered for review only, never preselected. Project build artifacts may contain nested `node_modules`, and old IDE versions may contain both. Everywhere else, including User Caches, these folders are still refused.
 
 ### Project build artifacts
 
@@ -137,11 +164,17 @@ DiskSweep/
 │   ├── SafetyValidator      Path, identity, symlink, and boundary validation
 │   ├── CleanupSnapshotRegistry  Scan-time identity handoff
 │   ├── CleanupEngine        Revalidated Trash/permanent mutations
+│   ├── SecureRemoval        Descriptor-relative permanent deletion
+│   ├── TrashRestorer        Undo / Put Back from the Trash
+│   ├── SimulatorService     simctl, with fixed arguments and no shell
 │   ├── SettingsStore        Observation plus UserDefaults persistence
 │   └── CleanupHistoryStore  Atomic local JSON history
 └── Views/                   Data-driven SwiftUI screens and components
 
 DiskSweepTests/              Focused unit tests using temporary directories
+Config/                      Signing configuration (Local.xcconfig is gitignored)
+scripts/make-fixture-home.sh Fake home folder for manual QA and benchmarks
+docs/design/                 Design proposals (user-file cleanup)
 project.yml                  XcodeGen source of truth
 DiskSweep.xcodeproj/         Generated project for direct Xcode use
 ```
@@ -155,6 +188,16 @@ Filesystem-intensive work is isolated from the main actor. UI-facing stores use 
 - A Mac running macOS 15 or later
 - Xcode with Swift 6 and the macOS 15 SDK or later
 - XcodeGen only when regenerating the project
+
+### Signing
+
+The signing team isn't committed. `project.yml` points both configurations at `Config/Signing.xcconfig`, which optionally includes `Config/Local.xcconfig` (gitignored). To sign with your team, copy the example and set your team ID:
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig
+```
+
+Without `Local.xcconfig`, Xcode signs the app and the test bundle to run locally. Both targets are always signed the same way, because the hardened-runtime host app refuses to load a test bundle signed by a different team.
 
 ### Open and run in Xcode
 
@@ -183,13 +226,29 @@ xcodebuild \
   test
 ```
 
-The unit-test sources cover allowlist containment and root shapes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, project-artifact marker recognition, idle detection, and revalidation, settings persistence and migration, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
+The unit-test sources cover path containment, allowlist root shapes (including custom Android SDK roots), the old-versus-new protected-path equivalence, descriptor-relative deletion against symlink swaps, identity policies for active caches, nested `.git` exceptions, Poetry environments, Undo and Put Back, scoped review and hidden Downloads selections, scan and analysis lifecycles (cancel, restart, parallel providers), tolerant persistence, package sizing, APFS clone sizes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, project-artifact marker recognition, idle detection, and revalidation, settings persistence and migration, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
 
 ### Verification performed
 
-The project build-artifact feature and its tests were added after this verification run and still need to be built and tested in Xcode on a Mac.
+On November 6, 2026, with Xcode 27.3 and the macOS 15 deployment target, the full suite ran **182 tests: 175 passed and 7 were skipped, with 0 failures**. The 7 skipped tests are the opt-in performance benchmarks (`PerformanceBenchmarks`), which only run when `DISKSWEEP_BENCHMARK_FIXTURE` points at a fixture built with `scripts/make-fixture-home.sh --large`:
 
-On August 17, 2026, the generated project was built with the macOS 15 deployment target using Swift 6 and the current Xcode toolchain. The full Xcode test run completed **61 tests with 0 failures**. The Debug application was then launched and visually inspected in dark appearance; navigation, settings, live scan progress, cancellation, partial results, and the final cleanup-review sheet were exercised without approving a filesystem mutation.
+```bash
+TEST_RUNNER_DISKSWEEP_BENCHMARK_FIXTURE="$(getconf DARWIN_USER_TEMP_DIR)DiskSweepPerfHome" \
+  xcodebuild -project DiskSweep.xcodeproj -scheme DiskSweep -destination 'platform=macOS' \
+  test -only-testing:DiskSweepTests/PerformanceBenchmarks
+```
+
+The suite also passed with parallel testing enabled (each test uses its own snapshot registry and temporary folders). Tests never clean real user data: cleanup tests use temporary folders, Trash tests use a stand-in `.Trash` folder, and simulator tests use a recording runner instead of `simctl`.
+
+### Manual QA with a fixture home
+
+Never click Clean in a build that points at your real home folder. Debug builds accept a fake home instead:
+
+```bash
+scripts/make-fixture-home.sh
+```
+
+The script rebuilds `$(getconf DARWIN_USER_TEMP_DIR)DiskSweepFixtureHome` with DerivedData that contains a Swift package checkout, Poetry caches and virtual environments, Downloads with a disk image, an app bundle, and a sparse bundle, a `.utm` virtual machine bundle, duplicates and hard links, and a superseded JetBrains version. Add `--large` for the performance fixture (100k DerivedData files, 20k Downloads files, 500 duplicate pairs). Then launch the Debug build with the launch argument `-DiskSweepHomeOverride <path>` (Scheme > Run > Arguments). Providers, analyzers, the safety validator, settings (a separate defaults suite), and history (inside the fixture) all use the fixture. The fixture must stay inside the per-user temporary directory, because the safety validator protects the rest of `/private`. Release builds don't contain this code.
 
 ### Regenerate the Xcode project
 
@@ -204,15 +263,16 @@ Review the generated project diff before committing it. For ordinary building, t
 
 ## Current limitations
 
-- Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped, and simulator cleanup is limited to cache directories rather than simulator app data.
-- Electron app caches are only recognized directly inside `~/Library/Application Support`, not in vendor subfolders such as `Google/Chrome Canary`. Android system images and virtual devices are only recognized in their default locations; a custom `ANDROID_HOME` or `ANDROID_AVD_HOME` is not read.
+- Provider discovery is intentionally conservative. Unrecognized application or browser layouts are skipped. Simulator cleanup covers cache directories and, through `simctl`, simulators with no installed runtime; old runtimes themselves aren't offered.
+- Electron app caches are only recognized directly inside `~/Library/Application Support`, not in vendor subfolders such as `Google/Chrome Canary`. Android system images and virtual devices are found in their default locations or in folders you choose under **Settings > Developer > Android locations**; `ANDROID_HOME` and `ANDROID_AVD_HOME` aren't read, because apps opened from Finder don't inherit shell variables.
 - Project folders inside protected locations, such as `~/Documents`, cannot be used for project build-artifact cleanup. Artifacts without a marker, such as Gradle `build/` folders or Python `dist/` folders, are not recognized. The project walk stops at a depth of 12 folders.
 - Full Disk Access detection is necessarily heuristic, and macOS permissions may still hide individual locations.
-- Large-scale performance on Macs containing millions of files has not yet been characterized.
-- Running-app visual QA covered the current host in dark appearance; a full light-mode, VoiceOver, keyboard-only, and automated visual-regression matrix remains future release work.
+- Performance was measured with a generated fixture (100k DerivedData files, 20k Downloads, 500 duplicate pairs), not on a Mac with millions of files. In a Debug build, sizing 100k files takes about 3.6 s, validating them before deletion about 10 s, and a full scan of that fixture about 4.3 s with three providers in parallel.
+- The list, review, Undo, menu bar, and simulator UI added in this round haven't been checked by a person in the running app yet; a light-mode, VoiceOver, keyboard-only, and visual-regression pass remains release work.
+- Duplicates and Large Files still can't clean files; see the proposal in `docs/design/user-file-cleanup.md`.
 - The macOS 15 deployment target compiles, but this verification run used the current host and SDK rather than a separate macOS 15 machine or virtual machine.
 - Cleanup mutations were verified only against isolated temporary test directories. The running app's real-user-data cleanup button was deliberately not activated during QA.
-- The engine revalidates immediately before each native `FileManager` path mutation, but path-based APIs still leave a narrow adversarial swap window. A higher-assurance release should use descriptor-relative filesystem operations or an atomic same-volume quarantine design.
+- Permanent deletions are descriptor-relative: the engine opens the approved root and walks to the target with `openat(O_NOFOLLOW)`, checks the target's device and inode, and removes it with `unlinkat` relative to its parent, so a folder swapped for a symbolic link after validation can't redirect the deletion. Moves to the Trash still use `FileManager.trashItem` by path, so a narrow same-user swap window remains for Trash moves; those are recoverable.
 - No signed, notarized, distributable release artifact is included.
 
 Treat this repository as a complete source implementation and a development build, not as a finished consumer release package. Review, sign, notarize, and repeat destructive-path validation before distribution.

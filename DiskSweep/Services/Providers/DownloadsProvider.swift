@@ -16,6 +16,7 @@ struct DownloadsProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent("Downloads", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
@@ -30,7 +31,12 @@ struct DownloadsProvider: CleanupProvider {
         )
     }
 
-    func cleanupItem(for file: FileItem) -> CleanupItem? {
+    /// Bridges an analyzed Downloads file to a cleanup item. The analysis snapshot must be in
+    /// `registry`, and the cleanup snapshot is recorded there for the engine.
+    func cleanupItem(
+        for file: FileItem,
+        registry: CleanupSnapshotRegistry
+    ) -> CleanupItem? {
         let downloads = allowedRoots[0].standardizedFileURL
         let candidate = file.url.standardizedFileURL
         let rootComponents = downloads.pathComponents
@@ -41,7 +47,9 @@ struct DownloadsProvider: CleanupProvider {
             return nil
         }
 
+        // The file's own ID, so bridging the same file again reuses the same registry key.
         let item = CleanupItem(
+            id: file.id,
             providerID: id,
             location: location,
             name: file.name,
@@ -55,13 +63,13 @@ struct DownloadsProvider: CleanupProvider {
             isSelectedByDefault: false,
             isDeletable: true
         )
-        guard let scanSnapshot = CleanupSnapshotRegistry.shared.snapshot(
+        guard let scanSnapshot = registry.snapshot(
             providerID: Self.analysisSnapshotProviderID,
             itemID: file.id
         ) else {
             return nil
         }
-        CleanupSnapshotRegistry.shared.record(
+        registry.record(
             providerID: id,
             itemID: item.id,
             identity: scanSnapshot.identity,

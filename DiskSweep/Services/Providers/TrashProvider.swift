@@ -15,6 +15,7 @@ struct TrashProvider: CleanupProvider {
         [homeDirectory.appendingPathComponent(".Trash", isDirectory: true)]
     }
 
+    @concurrent
     func scan(
         context: ScanContext,
         progress: @escaping ScanProgressHandler
