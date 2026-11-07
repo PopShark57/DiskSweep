@@ -164,11 +164,17 @@ DiskSweep/
 │   ├── SafetyValidator      Path, identity, symlink, and boundary validation
 │   ├── CleanupSnapshotRegistry  Scan-time identity handoff
 │   ├── CleanupEngine        Revalidated Trash/permanent mutations
+│   ├── SecureRemoval        Descriptor-relative permanent deletion
+│   ├── TrashRestorer        Undo / Put Back from the Trash
+│   ├── SimulatorService     simctl, with fixed arguments and no shell
 │   ├── SettingsStore        Observation plus UserDefaults persistence
 │   └── CleanupHistoryStore  Atomic local JSON history
 └── Views/                   Data-driven SwiftUI screens and components
 
 DiskSweepTests/              Focused unit tests using temporary directories
+Config/                      Signing configuration (Local.xcconfig is gitignored)
+scripts/make-fixture-home.sh Fake home folder for manual QA and benchmarks
+docs/design/                 Design proposals (user-file cleanup)
 project.yml                  XcodeGen source of truth
 DiskSweep.xcodeproj/         Generated project for direct Xcode use
 ```
@@ -220,13 +226,19 @@ xcodebuild \
   test
 ```
 
-The unit-test sources cover allowlist containment and root shapes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, project-artifact marker recognition, idle detection, and revalidation, settings persistence and migration, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
+The unit-test sources cover path containment, allowlist root shapes (including custom Android SDK roots), the old-versus-new protected-path equivalence, descriptor-relative deletion against symlink swaps, identity policies for active caches, nested `.git` exceptions, Poetry environments, Undo and Put Back, scoped review and hidden Downloads selections, scan and analysis lifecycles (cancel, restart, parallel providers), tolerant persistence, package sizing, APFS clone sizes, traversal and symlink rejection, protected paths, exact scan-time identity replacement, nested exclusions, permitted and refused cleanup mutations, scanner exclusions and cancellation, directory sizing, large-file and large-folder analysis, disk-usage trees, Downloads classification/filtering and safe bridge behavior, duplicate confirmation and selection safety, project-artifact marker recognition, idle detection, and revalidation, settings persistence and migration, and cleanup-history persistence. Tests use temporary directories and should not point cleanup code at real user data.
 
 ### Verification performed
 
-The project build-artifact feature and its tests were added after this verification run and still need to be built and tested in Xcode on a Mac.
+On November 6, 2026, with Xcode 27.3 and the macOS 15 deployment target, the full suite ran **180 tests: 173 passed and 7 were skipped, with 0 failures**. The 7 skipped tests are the opt-in performance benchmarks (`PerformanceBenchmarks`), which only run when `DISKSWEEP_BENCHMARK_FIXTURE` points at a fixture built with `scripts/make-fixture-home.sh --large`:
 
-On August 17, 2026, the generated project was built with the macOS 15 deployment target using Swift 6 and the current Xcode toolchain. The full Xcode test run completed **61 tests with 0 failures**. The Debug application was then launched and visually inspected in dark appearance; navigation, settings, live scan progress, cancellation, partial results, and the final cleanup-review sheet were exercised without approving a filesystem mutation.
+```bash
+TEST_RUNNER_DISKSWEEP_BENCHMARK_FIXTURE="$(getconf DARWIN_USER_TEMP_DIR)DiskSweepPerfHome" \
+  xcodebuild -project DiskSweep.xcodeproj -scheme DiskSweep -destination 'platform=macOS' \
+  test -only-testing:DiskSweepTests/PerformanceBenchmarks
+```
+
+The suite also passed with parallel testing enabled (each test uses its own snapshot registry and temporary folders). Tests never clean real user data: cleanup tests use temporary folders, Trash tests use a stand-in `.Trash` folder, and simulator tests use a recording runner instead of `simctl`.
 
 ### Manual QA with a fixture home
 
@@ -255,8 +267,9 @@ Review the generated project diff before committing it. For ordinary building, t
 - Electron app caches are only recognized directly inside `~/Library/Application Support`, not in vendor subfolders such as `Google/Chrome Canary`. Android system images and virtual devices are found in their default locations or in folders you choose under **Settings > Developer > Android locations**; `ANDROID_HOME` and `ANDROID_AVD_HOME` aren't read, because apps opened from Finder don't inherit shell variables.
 - Project folders inside protected locations, such as `~/Documents`, cannot be used for project build-artifact cleanup. Artifacts without a marker, such as Gradle `build/` folders or Python `dist/` folders, are not recognized. The project walk stops at a depth of 12 folders.
 - Full Disk Access detection is necessarily heuristic, and macOS permissions may still hide individual locations.
-- Large-scale performance on Macs containing millions of files has not yet been characterized.
-- Running-app visual QA covered the current host in dark appearance; a full light-mode, VoiceOver, keyboard-only, and automated visual-regression matrix remains future release work.
+- Performance was measured with a generated fixture (100k DerivedData files, 20k Downloads, 500 duplicate pairs), not on a Mac with millions of files. In a Debug build, sizing 100k files takes about 3.6 s, validating them before deletion about 10 s, and a full scan of that fixture about 4.3 s with three providers in parallel.
+- The list, review, Undo, menu bar, and simulator UI added in this round haven't been checked by a person in the running app yet; a light-mode, VoiceOver, keyboard-only, and visual-regression pass remains release work.
+- Duplicates and Large Files still can't clean files; see the proposal in `docs/design/user-file-cleanup.md`.
 - The macOS 15 deployment target compiles, but this verification run used the current host and SDK rather than a separate macOS 15 machine or virtual machine.
 - Cleanup mutations were verified only against isolated temporary test directories. The running app's real-user-data cleanup button was deliberately not activated during QA.
 - Permanent deletions are descriptor-relative: the engine opens the approved root and walks to the target with `openat(O_NOFOLLOW)`, checks the target's device and inode, and removes it with `unlinkat` relative to its parent, so a folder swapped for a symbolic link after validation can't redirect the deletion. Moves to the Trash still use `FileManager.trashItem` by path, so a narrow same-user swap window remains for Trash moves; those are recoverable.
