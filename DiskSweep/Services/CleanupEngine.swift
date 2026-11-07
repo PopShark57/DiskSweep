@@ -5,17 +5,20 @@ struct CleanupAuthorization: Sendable {
     let location: CleanupLocation
     let allowedRoots: [URL]
     let requiresSnapshot: Bool
+    let ruleContext: CleanupRuleContext
 
     init(
         providerID: String,
         location: CleanupLocation,
         allowedRoots: [URL],
-        requiresSnapshot: Bool = false
+        requiresSnapshot: Bool = false,
+        ruleContext: CleanupRuleContext = CleanupRuleContext()
     ) {
         self.providerID = providerID
         self.location = location
         self.allowedRoots = allowedRoots
         self.requiresSnapshot = requiresSnapshot
+        self.ruleContext = ruleContext
     }
 
     init(provider: any CleanupProvider) {
@@ -23,7 +26,8 @@ struct CleanupAuthorization: Sendable {
             providerID: provider.id,
             location: provider.location,
             allowedRoots: provider.allowedRoots,
-            requiresSnapshot: true
+            requiresSnapshot: true,
+            ruleContext: provider.ruleContext
         )
     }
 }
@@ -178,7 +182,11 @@ actor CleanupEngine: CleanupPerforming {
                             permittedNestedNames: permittedNestedNames
                         )
                     }
-                    try Self.requireStillQualifies(validated, location: item.location)
+                    try Self.requireStillQualifies(
+                        validated,
+                        location: item.location,
+                        ruleContext: authorization.ruleContext
+                    )
                     validated = try validator.revalidate(
                         validated,
                         location: item.location,
@@ -276,7 +284,8 @@ actor CleanupEngine: CleanupPerforming {
     /// removal, because a marker, a newer version, or an emulator may have changed since the scan.
     private static func requireStillQualifies(
         _ validated: ValidatedCleanupTarget,
-        location: CleanupLocation
+        location: CleanupLocation,
+        ruleContext: CleanupRuleContext
     ) throws {
         let url = validated.deletionURL
         switch location {
@@ -293,7 +302,11 @@ actor CleanupEngine: CleanupPerforming {
                 throw SafetyValidationError.noLongerQualifies(url.path)
             }
         case .androidSystemImages:
-            if !AndroidSystemImageRules.isRemovable(url, approvedRoot: validated.approvedRoot) {
+            if !AndroidSystemImageRules.isRemovable(
+                url,
+                approvedRoot: validated.approvedRoot,
+                avdDirectory: ruleContext.androidAVDDirectory
+            ) {
                 throw SafetyValidationError.noLongerQualifies(url.path)
             }
         default:

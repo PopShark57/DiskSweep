@@ -198,6 +198,75 @@ final class DeveloperCleanupProvidersTests: XCTestCase {
         XCTAssertTrue(exists("Library/Android/sdk/system-images/android-30/google_apis/x86"))
     }
 
+    // MARK: - Custom Android SDK and device folders (F7)
+
+    private func makeCustomSDK(_ relative: String = "Developer/android-sdk") throws -> URL {
+        try write("\(relative)/platform-tools/adb")
+        for image in ["android-30/google_apis/x86", "android-35/google_apis/arm64-v8a"] {
+            try write("\(relative)/system-images/\(image)/package.xml")
+            try write("\(relative)/system-images/\(image)/system.img", byteCount: 64)
+        }
+        return home.appendingPathComponent(relative, isDirectory: true)
+    }
+
+    func testCustomSDKAndDeviceFoldersAreUsedForScanAndRecheck() async throws {
+        let sdk = try makeCustomSDK()
+        try write(
+            "Devices/Pixel.avd/config.ini",
+            contents: "image.sysdir.1=system-images/android-35/google_apis/arm64-v8a/\n"
+        )
+        let devices = home.appendingPathComponent("Devices", isDirectory: true)
+        let provider = AndroidSystemImagesProvider(homeDirectory: home, sdkDirectory: sdk, avdDirectory: devices)
+
+        let scanned = await provider.scan(context: context) { _ in }
+        XCTAssertEqual(scanned.items.map(\.name), ["API 30 · google apis · x86"])
+        XCTAssertTrue(scanned.items.allSatisfy(\.isDeletable))
+
+        let result = await engine.clean(scanned.items, providers: [provider], disposition: .permanent)
+        XCTAssertTrue(result.failures.isEmpty, "\(result.failures.map(\.reason))")
+        XCTAssertFalse(exists("Developer/android-sdk/system-images/android-30/google_apis/x86"))
+        XCTAssertTrue(exists("Developer/android-sdk/system-images/android-35/google_apis/arm64-v8a"))
+    }
+
+    /// Negative: the custom device folder is also used for the recheck right before removal.
+    func testCustomSDKImageThatADeviceStartedUsingIsRefused() async throws {
+        let sdk = try makeCustomSDK()
+        let devices = home.appendingPathComponent("Devices", isDirectory: true)
+        try FileManager.default.createDirectory(at: devices, withIntermediateDirectories: true)
+        let provider = AndroidSystemImagesProvider(homeDirectory: home, sdkDirectory: sdk, avdDirectory: devices)
+        let scanned = await provider.scan(context: context) { _ in }
+        XCTAssertEqual(scanned.items.count, 2)
+
+        try write("Devices/Tablet.avd/config.ini", contents: "image.sysdir.1=system-images/android-30/google_apis/x86/\n")
+        let result = await engine.clean(scanned.items, providers: [provider], disposition: .permanent)
+
+        XCTAssertEqual(result.cleanedItems.count, 1)
+        XCTAssertTrue(exists("Developer/android-sdk/system-images/android-30/google_apis/x86"))
+    }
+
+    /// Negative: a custom root must be an SDK's system-images folder in an unprotected,
+    /// user-scoped place, and is only accepted for Android images.
+    func testValidatorAcceptsOnlyRealCustomSDKImageRoots() throws {
+        let sdk = try makeCustomSDK()
+        let images = sdk.appendingPathComponent("system-images", isDirectory: true)
+        XCTAssertNoThrow(try validator.preflightApprovedRoot(images, location: .androidSystemImages))
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(images, location: .userCaches))
+
+        try write("Notes/system-images/android-30/google_apis/x86/package.xml")
+        let lookalike = home.appendingPathComponent("Notes/system-images", isDirectory: true)
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(lookalike, location: .androidSystemImages))
+
+        _ = try makeCustomSDK("Documents/android-sdk")
+        let protected = home.appendingPathComponent("Documents/android-sdk/system-images", isDirectory: true)
+        XCTAssertThrowsError(try validator.preflightApprovedRoot(protected, location: .androidSystemImages))
+
+        let sdkFolder = home.appendingPathComponent("Developer/android-sdk", isDirectory: true)
+        XCTAssertThrowsError(
+            try validator.preflightApprovedRoot(sdkFolder, location: .androidSystemImages),
+            "The SDK folder itself is never a cleanup root"
+        )
+    }
+
     // MARK: - Nested .git in DerivedData and tool caches (D1)
 
     func testDerivedDataWithSwiftPackageCheckoutIsDeletableAndCleaned() async throws {

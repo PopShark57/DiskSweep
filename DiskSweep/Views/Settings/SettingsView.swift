@@ -21,6 +21,8 @@ struct SettingsView: View {
     enum FolderPickerPurpose {
         case exclusion
         case projectFolder
+        case androidSDK
+        case androidAVD
     }
 
     enum SettingsTab: String, CaseIterable, Identifiable {
@@ -97,6 +99,8 @@ struct SettingsView: View {
                 switch purpose {
                 case .exclusion: settings.addExclusion(url)
                 case .projectFolder: settings.addProjectFolder(url)
+                case .androidSDK: settings.developer.androidSDKFolder = url.standardizedFileURL
+                case .androidAVD: settings.developer.androidAVDFolder = url.standardizedFileURL
                 case nil: break
                 }
             }
@@ -283,6 +287,63 @@ struct SettingsView: View {
 
             projectFolderSettings
                 .disabled(!settings.developer.isEnabled)
+
+            androidLocationSettings
+                .disabled(!settings.developer.isEnabled)
+        }
+    }
+
+    private var androidLocationSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Android locations")
+                .font(.headline)
+            Text("If you moved the Android SDK or your virtual devices, choose their folders so unused system images can be found. The SDK folder must contain platform-tools, licenses, or emulator, and be inside your home folder outside protected locations.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            androidLocationRow(
+                title: "SDK",
+                value: settings.developer.androidSDKFolder,
+                placeholder: "~/Library/Android/sdk",
+                choose: { folderPickerPurpose = .androidSDK },
+                reset: { settings.developer.androidSDKFolder = nil }
+            )
+            if let sdk = settings.developer.androidSDKFolder,
+               !AndroidSystemImageRules.isSDKImagesRoot(sdk.appendingPathComponent("system-images")) {
+                Label("This folder doesn't look like an Android SDK, so DiskSweep will skip it.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            androidLocationRow(
+                title: "Virtual devices",
+                value: settings.developer.androidAVDFolder,
+                placeholder: "~/.android/avd",
+                choose: { folderPickerPurpose = .androidAVD },
+                reset: { settings.developer.androidAVDFolder = nil }
+            )
+        }
+        .cardSurface()
+    }
+
+    private func androidLocationRow(
+        title: String,
+        value: URL?,
+        placeholder: String,
+        choose: @escaping () -> Void,
+        reset: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 110, alignment: .leading)
+            Text(value?.path(percentEncoded: false) ?? placeholder)
+                .foregroundStyle(value == nil ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Button("Choose…", action: choose)
+            if value != nil {
+                Button("Use Default", action: reset)
+            }
         }
     }
 

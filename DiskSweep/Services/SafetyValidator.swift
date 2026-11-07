@@ -432,8 +432,12 @@ struct SafetyValidator: Sendable {
         case .staleIDEVersions:
             return isStaleIDEVersionsRoot(root)
         case .androidSystemImages:
+            // The default SDK, or an SDK folder chosen in Settings (F7). A custom root must be
+            // an SDK's system-images folder; canonicalApprovedRoot already requires it to be
+            // user-scoped and unprotected.
             return AndroidSystemImageRules.imagesRoot(homeDirectory: homeDirectory)
                 .pathComponents == root.pathComponents
+                || AndroidSystemImageRules.isSDKImagesRoot(root)
         case .projectArtifacts:
             // Project folders are chosen by the user. Protected locations and the home folder
             // itself are already refused by canonicalApprovedRoot; the Library and Trash are

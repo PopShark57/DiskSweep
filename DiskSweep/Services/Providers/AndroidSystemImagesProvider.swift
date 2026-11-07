@@ -17,6 +17,20 @@ enum AndroidSystemImageRules {
         homeDirectory.appendingPathComponent(".android/avd", isDirectory: true)
     }
 
+    /// Folders that only an Android SDK has next to `system-images`.
+    static let sdkMarkerNames = ["platform-tools", "licenses", "emulator"]
+
+    /// A `system-images` folder in an SDK the person chose in Settings. Its parent must look
+    /// like an SDK; the validator separately requires a user-scoped, unprotected location,
+    /// and every image is rechecked against the virtual devices before removal.
+    static func isSDKImagesRoot(_ root: URL) -> Bool {
+        guard root.lastPathComponent == "system-images" else { return false }
+        let sdk = root.deletingLastPathComponent()
+        return sdkMarkerNames.contains {
+            (try? SafetyValidator.captureIdentity(at: sdk.appendingPathComponent($0)))?.kind == .directory
+        }
+    }
+
     /// The validator only approves `~/Library/Android/sdk/system-images`, so the home folder is
     /// always four levels above an approved images root.
     static func homeDirectory(forImagesRoot root: URL) -> URL {
@@ -52,8 +66,7 @@ enum AndroidSystemImageRules {
     }
 
     /// Standardized paths of every image an AVD boots, or `nil` when an AVD could not be read.
-    static func referencedImagePaths(homeDirectory: URL, sdkDirectory: URL) -> Set<String>? {
-        let avds = avdDirectory(homeDirectory: homeDirectory)
+    static func referencedImagePaths(avdDirectory avds: URL, sdkDirectory: URL) -> Set<String>? {
         guard let entries = try? FileManager().contentsOfDirectory(
             at: avds,
             includingPropertiesForKeys: nil,
@@ -96,9 +109,9 @@ enum AndroidSystemImageRules {
         return referenced
     }
 
-    static func unusedImages(in root: URL, homeDirectory: URL) -> [URL] {
+    static func unusedImages(in root: URL, avdDirectory: URL) -> [URL] {
         guard let referenced = referencedImagePaths(
-            homeDirectory: homeDirectory,
+            avdDirectory: avdDirectory,
             sdkDirectory: root.deletingLastPathComponent()
         ) else {
             return []
@@ -107,7 +120,8 @@ enum AndroidSystemImageRules {
     }
 
     /// Rechecked immediately before removal, in case an AVD started using the image.
-    static func isRemovable(_ url: URL, approvedRoot: URL) -> Bool {
+    /// `avdDirectory` defaults to `~/.android/avd` of the home folder above the default root.
+    static func isRemovable(_ url: URL, approvedRoot: URL, avdDirectory: URL? = nil) -> Bool {
         let rootComponents = approvedRoot.standardizedFileURL.pathComponents
         let components = url.standardizedFileURL.pathComponents
         guard components.count == rootComponents.count + 3,
@@ -115,10 +129,10 @@ enum AndroidSystemImageRules {
               isSystemImage(url) else {
             return false
         }
-        return unusedImages(
-            in: approvedRoot,
-            homeDirectory: homeDirectory(forImagesRoot: approvedRoot)
-        ).contains { normalizedPath($0) == normalizedPath(url) }
+        let devices = avdDirectory
+            ?? Self.avdDirectory(homeDirectory: homeDirectory(forImagesRoot: approvedRoot))
+        return unusedImages(in: approvedRoot, avdDirectory: devices)
+            .contains { normalizedPath($0) == normalizedPath(url) }
     }
 
     static func displayName(for image: URL) -> String {
@@ -148,15 +162,36 @@ struct AndroidSystemImagesProvider: CleanupProvider {
     static let providerID = "android-system-images"
 
     let homeDirectory: URL
+    /// A custom SDK folder chosen in Settings; `nil` uses `~/Library/Android/sdk`.
+    let sdkDirectory: URL?
+    /// A custom virtual-device folder chosen in Settings; `nil` uses `~/.android/avd`.
+    let customAVDDirectory: URL?
 
-    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        sdkDirectory: URL? = nil,
+        avdDirectory: URL? = nil
+    ) {
         self.homeDirectory = homeDirectory.standardizedFileURL
+        self.sdkDirectory = sdkDirectory?.standardizedFileURL
+        self.customAVDDirectory = avdDirectory?.standardizedFileURL
     }
 
     var id: String { Self.providerID }
     var location: CleanupLocation { .androidSystemImages }
     var allowedRoots: [URL] {
-        [AndroidSystemImageRules.imagesRoot(homeDirectory: homeDirectory)]
+        if let sdkDirectory {
+            return [sdkDirectory.appendingPathComponent("system-images", isDirectory: true)]
+        }
+        return [AndroidSystemImageRules.imagesRoot(homeDirectory: homeDirectory)]
+    }
+
+    var avdDirectory: URL {
+        customAVDDirectory ?? AndroidSystemImageRules.avdDirectory(homeDirectory: homeDirectory)
+    }
+
+    var ruleContext: CleanupRuleContext {
+        CleanupRuleContext(androidAVDDirectory: avdDirectory)
     }
 
     @concurrent
@@ -164,7 +199,12 @@ struct AndroidSystemImagesProvider: CleanupProvider {
         context: ScanContext,
         progress: @escaping ScanProgressHandler
     ) async -> ProviderScanResult {
-        let homeDirectory = homeDirectory
+        let devices = avdDirectory
+        let devicesLabel = devices.path.replacingOccurrences(
+            of: homeDirectory.path,
+            with: "~",
+            options: .anchored
+        )
         return await ProviderSupport.scanDirectoryCandidates(
             providerID: id,
             location: location,
@@ -172,12 +212,12 @@ struct AndroidSystemImagesProvider: CleanupProvider {
             context: context,
             progress: progress
         ) { root in
-            AndroidSystemImageRules.unusedImages(in: root, homeDirectory: homeDirectory).map {
+            AndroidSystemImageRules.unusedImages(in: root, avdDirectory: devices).map {
                 ProviderSupport.DirectoryCandidate(
                     url: $0,
                     name: AndroidSystemImageRules.displayName(for: $0),
                     explanation: "An emulator system image that none of your Android virtual devices uses. Android Studio's SDK Manager can download it again.",
-                    detail: "Not used by any virtual device in ~/.android/avd"
+                    detail: "Not used by any virtual device in \(devicesLabel)"
                 )
             }
         }

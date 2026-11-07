@@ -107,6 +107,10 @@ struct DeveloperSettings: Codable, Hashable, Sendable {
     var projectFolders: [URL]
     /// How long a project must be unchanged before its artifacts are offered.
     var projectIdleDays: Int
+    /// An Android SDK folder chosen by the person; `nil` uses `~/Library/Android/sdk`.
+    var androidSDKFolder: URL?
+    /// An Android virtual-device folder chosen by the person; `nil` uses `~/.android/avd`.
+    var androidAVDFolder: URL?
 
     static let defaultProjectIdleDays = 90
     static let projectIdleDayOptions = [30, 60, 90, 180, 365]
@@ -123,6 +127,8 @@ struct DeveloperSettings: Codable, Hashable, Sendable {
         case includedLocations
         case projectFolders
         case projectIdleDays
+        case androidSDKFolder
+        case androidAVDFolder
     }
 }
 
@@ -140,6 +146,8 @@ extension DeveloperSettings {
             Int.self,
             forKey: .projectIdleDays
         ) ?? Self.defaultProjectIdleDays
+        androidSDKFolder = try container.decodeIfPresent(URL.self, forKey: .androidSDKFolder)
+        androidAVDFolder = try container.decodeIfPresent(URL.self, forKey: .androidAVDFolder)
     }
 }
 

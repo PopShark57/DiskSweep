@@ -137,7 +137,20 @@ final class AppViewModel {
     /// Cleanup authorizations are built from this at cleanup time, so removing a project
     /// folder also revokes cleanup of anything previously found inside it.
     private var providers: [any CleanupProvider] {
-        standardProviders + [
+        // Android images follow the SDK and device folders chosen in Settings, if any.
+        let developer = settings.developer
+        let configured: [any CleanupProvider] = standardProviders.map { provider in
+            guard provider.id == AndroidSystemImagesProvider.providerID,
+                  developer.androidSDKFolder != nil || developer.androidAVDFolder != nil else {
+                return provider
+            }
+            return AndroidSystemImagesProvider(
+                homeDirectory: homeDirectory,
+                sdkDirectory: developer.androidSDKFolder,
+                avdDirectory: developer.androidAVDFolder
+            )
+        }
+        return configured + [
             ProjectArtifactsProvider(
                 projectFolders: settings.developer.projectFolders,
                 minimumAge: settings.projectIdleInterval,
