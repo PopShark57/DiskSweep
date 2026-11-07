@@ -110,8 +110,50 @@ final class DuplicateAnalyzerTests: XCTestCase {
 
         let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
 
+        // 2.5 (D12), approved change to this test: the hard-linked pair is one file on disk,
+        // so only one of its names is reported, next to the real copy. The pair itself is
+        // never reported as two reclaimable copies.
+        XCTAssertEqual(result.groups.count, 1)
+        let names = Set(try XCTUnwrap(result.groups.first).files.map(\.name))
+        XCTAssertEqual(names.count, 2)
+        XCTAssertTrue(names.contains("independent-copy.bin"))
+        XCTAssertEqual(names.intersection(["original.bin", "alias.bin"]).count, 1)
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+        XCTAssertEqual(result.reclaimableSize, Int64(data.count))
+    }
+
+    /// 2.5 (D12): a lone hard-link pair still produces no group.
+    func testLoneHardLinkPairIsNotReportedAsDuplicates() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let original = try temporary.file("original.bin", data: Data(repeating: 9, count: 8_192))
+        try FileManager.default.linkItem(at: original, to: temporary.url.appendingPathComponent("alias.bin"))
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+
+        let result = try await DuplicateAnalyzer().scan(root: temporary.url, context: context)
+
         XCTAssertTrue(result.groups.isEmpty)
-        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 2)
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+    }
+
+    /// 2.5 (D12): A and its hard link A' plus a real copy B form one group with the
+    /// shallowest alias as the representative, and the copy to keep is never the only one.
+    func testHardLinkedFileWithARealCopyIsReported() async throws {
+        let temporary = try AnalyzerTemporaryDirectory()
+        let data = Data(repeating: 3, count: 16_384)
+        let original = try temporary.file("Deep/Nested/A.bin", data: data)
+        try FileManager.default.linkItem(at: original, to: temporary.url.appendingPathComponent("Shallow-A.bin"))
+        try temporary.file("Copies/B.bin", data: data)
+        let context = ScanContext(homeDirectory: temporary.url, showHiddenFiles: true, snapshots: snapshots)
+        let analyzer = DuplicateAnalyzer()
+
+        let result = try await analyzer.scan(root: temporary.url, context: context)
+
+        let group = try XCTUnwrap(result.groups.first)
+        XCTAssertEqual(result.groups.count, 1)
+        XCTAssertEqual(Set(group.files.map(\.name)), ["Shallow-A.bin", "B.bin"])
+        XCTAssertEqual(result.diagnostics.hardLinkAliasesIgnored, 1)
+        let everyID = Set(group.files.map(\.id))
+        XCTAssertEqual(analyzer.selectionPreservingOneCopy(everyID, in: group).count, 1)
     }
 
     func testSelectionHelpersAlwaysPreserveAtLeastOneCopy() async throws {

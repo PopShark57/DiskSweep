@@ -57,12 +57,16 @@ enum DuplicateSelection {
     }
 
     private static func preferredKeeper(in group: DuplicateGroup) -> FileItem? {
-        group.files.min {
-            let lhsDepth = $0.url.standardizedFileURL.pathComponents.count
-            let rhsDepth = $1.url.standardizedFileURL.pathComponents.count
-            if lhsDepth != rhsDepth { return lhsDepth < rhsDepth }
-            return $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending
-        }
+        group.files.min(by: keeperOrdering)
+    }
+
+    /// Shallowest path first, then by name. Used to pick the copy to keep, and the
+    /// representative among hard-link aliases.
+    static func keeperOrdering(_ lhs: FileItem, _ rhs: FileItem) -> Bool {
+        let lhsDepth = lhs.url.standardizedFileURL.pathComponents.count
+        let rhsDepth = rhs.url.standardizedFileURL.pathComponents.count
+        if lhsDepth != rhsDepth { return lhsDepth < rhsDepth }
+        return lhs.url.path.localizedStandardCompare(rhs.url.path) == .orderedAscending
     }
 }
 
@@ -311,22 +315,30 @@ struct DuplicateAnalyzer: Sendable {
         from files: [FileItem],
         diagnostics: inout DuplicateScanDiagnostics
     ) -> [FileItem] {
-        let identities = files.map { file in
-            (file: file, identity: physicalIdentity(for: file.url))
-        }
-        let identityCounts = Dictionary(
-            grouping: identities.compactMap(\.identity),
-            by: { $0 }
-        ).mapValues(\.count)
-
-        return identities.compactMap { entry in
-            guard let identity = entry.identity else { return entry.file }
-            if identityCounts[identity, default: 0] > 1 {
-                diagnostics.hardLinkAliasesIgnored += 1
-                return nil
+        // Hard links are one file on disk under several names. Keep one representative per
+        // (device, inode), the one the selection helpers would keep, and drop only the extra
+        // names. A real copy elsewhere is still compared against the representative.
+        var unidentified: [FileItem] = []
+        var byIdentity: [PhysicalFileIdentity: [FileItem]] = [:]
+        for file in files {
+            if let identity = physicalIdentity(for: file.url) {
+                byIdentity[identity, default: []].append(file)
+            } else {
+                unidentified.append(file)
             }
-            return entry.file
         }
+
+        var kept = unidentified
+        for aliases in byIdentity.values {
+            guard let representative = aliases.min(by: DuplicateSelection.keeperOrdering) else {
+                continue
+            }
+            kept.append(representative)
+            diagnostics.hardLinkAliasesIgnored += aliases.count - 1
+        }
+        // Keep the enumeration order so results stay deterministic.
+        let keptIDs = Set(kept.map(\.id))
+        return files.filter { keptIDs.contains($0.id) }
     }
 
     private static func physicalIdentity(for url: URL) -> PhysicalFileIdentity? {

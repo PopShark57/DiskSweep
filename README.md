@@ -41,7 +41,7 @@ DiskSweep is a native SwiftUI utility for understanding disk use and reclaiming 
 - Bundles (apps, virtual machines, Final Cut and iMovie libraries, sparse bundles, `.xcarchive` folders, and other packages) count toward their folder's total and appear as one item with their full size in Large Folders, Disk Usage, Large Files, and Downloads, controlled by **Settings > Exclusions > Treat bundles as single items**. Duplicates still skips them, and bundles in Downloads are shown for review but can't be cleaned. Photo libraries and Time Machine data remain fully excluded.
 - Downloads grouping for disk images, archives, installers, videos, images, documents, and other files, with age and size filters. Downloads are never preselected.
 - APFS clone awareness: Large Files and Duplicates read each result's private (unshared) size with `getattrlist(ATTR_CMNEXT_PRIVATESIZE)`. When most of a file shares storage with clones, the row shows how much is unique, which is about what removing it would free.
-- Staged duplicate detection: size grouping, partial sampling, SHA-256 hashing, and final byte-for-byte confirmation. Hard-link aliases are excluded and selection helpers preserve at least one copy.
+- Staged duplicate detection: size grouping, partial sampling, SHA-256 hashing, and final byte-for-byte confirmation. Hard links count as one file: only one name per linked file is compared (the shallowest), so a hard-linked file with a real copy elsewhere is still reported, while a lone hard-link pair isn't. Selection helpers preserve at least one copy.
 - Risk classification for regeneratable data, items needing review, and user-created files.
 
 ### Cleanup and local state
@@ -230,7 +230,7 @@ The unit-test sources cover path containment, allowlist root shapes (including c
 
 ### Verification performed
 
-On November 6, 2026, with Xcode 27.3 and the macOS 15 deployment target, the full suite ran **180 tests: 173 passed and 7 were skipped, with 0 failures**. The 7 skipped tests are the opt-in performance benchmarks (`PerformanceBenchmarks`), which only run when `DISKSWEEP_BENCHMARK_FIXTURE` points at a fixture built with `scripts/make-fixture-home.sh --large`:
+On November 6, 2026, with Xcode 27.3 and the macOS 15 deployment target, the full suite ran **182 tests: 175 passed and 7 were skipped, with 0 failures**. The 7 skipped tests are the opt-in performance benchmarks (`PerformanceBenchmarks`), which only run when `DISKSWEEP_BENCHMARK_FIXTURE` points at a fixture built with `scripts/make-fixture-home.sh --large`:
 
 ```bash
 TEST_RUNNER_DISKSWEEP_BENCHMARK_FIXTURE="$(getconf DARWIN_USER_TEMP_DIR)DiskSweepPerfHome" \
